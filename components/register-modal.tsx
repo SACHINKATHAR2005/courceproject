@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useStore } from '@/lib/store/useStore';
+import { useRouter } from 'next/navigation';
 import { UserPlus, X, GraduationCap, CheckCircle2 } from 'lucide-react';
 
 interface RegisterModalProps {
@@ -9,7 +9,7 @@ interface RegisterModalProps {
 }
 
 export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose }) => {
-  const { registerUser } = useStore();
+  const router = useRouter();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [submitted, setSubmitted] = useState(false);
@@ -18,26 +18,22 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose }) => {
     e.preventDefault();
     if (!fullName.trim() || !email.trim()) return;
 
-    // By default, registration is for Student role only
-    registerUser(fullName.trim(), email.trim(), 'student');
-    setSubmitted(true);
-    setTimeout(() => {
-      onClose();
-    }, 1200);
+    onClose();
+    router.push('/register');
   };
 
   return (
-    <div 
+    <div
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto cursor-pointer"
     >
-      <div 
-        onClick={(e) => e.stopPropagation()} 
+      <div
+        onClick={(e) => e.stopPropagation()}
         className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 cursor-default my-8"
       >
-        
+
         {/* Top Close Button (X) */}
         <button
           type="button"

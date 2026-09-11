@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase/client';
@@ -10,7 +10,7 @@ import type { UserRole } from '@/lib/types';
 const staffRoles = ['instructor', 'admin'] as const;
 type StaffRole = (typeof staffRoles)[number];
 
-export default function StaffAuthPage() {
+function StaffAuthForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const setUser = useStore((state) => state.setUser);
@@ -142,5 +142,13 @@ export default function StaffAuthPage() {
                 <Link href="/" className="block text-center text-sm text-slate-400 hover:text-white">Return to public site</Link>
             </div>
         </main>
+    );
+}
+
+export default function StaffAuthPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-slate-950" />}>
+            <StaffAuthForm />
+        </Suspense>
     );
 }
