@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { AssignmentSubmission } from '@/lib/types';
 import { useStore } from '@/lib/store/useStore';
-import { CheckCircle, X, Award, ExternalLink, MessageSquare } from 'lucide-react';
+import { CheckCircle, X, Award, ExternalLink, MessageSquare, Loader2 } from 'lucide-react';
 
 interface GradingModalProps {
   submission: AssignmentSubmission;
@@ -19,10 +19,22 @@ export const GradingModal: React.FC<GradingModalProps> = ({ submission, onClose 
     submission.feedback || 'Great work! Assignment requirements have been verified.'
   );
   const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    gradeSubmission(submission.id, Number(grade), feedback);
+    setIsSaving(true);
+    setSaveError('');
+
+    const res = await gradeSubmission(submission.id, Number(grade), feedback);
+    setIsSaving(false);
+
+    if (!res.ok) {
+      setSaveError(res.error || 'Failed to save grade. Please try again.');
+      return;
+    }
+
     setIsSaved(true);
     setTimeout(() => {
       onClose();
@@ -117,20 +129,32 @@ export const GradingModal: React.FC<GradingModalProps> = ({ submission, onClose 
               </div>
             </div>
 
+            {saveError && (
+              <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">
+                {saveError}
+              </p>
+            )}
+
             <div className="pt-3 flex justify-end space-x-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800"
+                disabled={isSaving}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all flex items-center space-x-2"
+                disabled={isSaving}
+                className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all flex items-center space-x-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <CheckCircle className="w-4 h-4" />
-                <span>Submit Grade</span>
+                {isSaving ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="w-4 h-4" />
+                )}
+                <span>{isSaving ? 'Saving Grade...' : 'Submit Grade'}</span>
               </button>
             </div>
           </form>

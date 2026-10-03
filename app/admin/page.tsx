@@ -408,9 +408,13 @@ function AdminDashboardContent() {
                   <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
                     <span className="text-xs text-slate-400 font-semibold">Role Action:</span>
                     <button
-                      onClick={() => {
-                        updateUserRole(st.id, 'instructor');
-                        alert(`${st.fullName} promoted to Instructor!`);
+                      onClick={async () => {
+                        const ok = await updateUserRole(st.id, 'instructor');
+                        if (ok) {
+                          alert(`${st.fullName} promoted to Instructor!`);
+                        } else {
+                          alert(`Failed to promote ${st.fullName}. Please check database permissions.`);
+                        }
                       }}
                       className="px-3 py-1.5 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition-all flex items-center space-x-1"
                     >
@@ -510,9 +514,12 @@ function AdminDashboardContent() {
                         </button>
                         {cert.status !== 'REVOKED' && (
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (confirm(`Revoke certificate ${cert.outwardNo}?`)) {
-                                revokeCertificate(cert.id);
+                                const ok = await revokeCertificate(cert.id);
+                                if (!ok) {
+                                  alert(`Failed to revoke certificate ${cert.outwardNo}. Please check database permissions.`);
+                                }
                               }
                             }}
                             className="px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold text-xs border border-red-500/30 transition-all"

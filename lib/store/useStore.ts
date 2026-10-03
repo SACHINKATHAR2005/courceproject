@@ -9,7 +9,7 @@ interface StoreState {
   allUsers: UserProfile[];
   setUser: (user: UserProfile | null) => void;
   logoutUser: () => void;
-  updateUserRole: (userId: string, newRole: UserRole) => void;
+  updateUserRole: (userId: string, newRole: UserRole) => Promise<boolean>;
 
   // Course state
   courses: Course[];
@@ -29,8 +29,8 @@ interface StoreState {
 
   // Submission state
   submissions: AssignmentSubmission[];
-  submitAssignment: (submission: Omit<AssignmentSubmission, 'id' | 'submittedAt' | 'status'>) => void;
-  gradeSubmission: (submissionId: string, grade: number, feedback: string) => void;
+  submitAssignment: (submission: Omit<AssignmentSubmission, 'id' | 'submittedAt' | 'status'>) => Promise<{ ok: boolean; error?: string }>;
+  gradeSubmission: (submissionId: string, grade: number, feedback: string) => Promise<{ ok: boolean; error?: string }>;
 
   // Certificate state
   certificates: Certificate[];
@@ -38,7 +38,7 @@ interface StoreState {
   issueCertificateForStudent: (studentId: string, courseId: string) => Promise<{ certificate?: Certificate; error?: string }>;
   getCertificateByOutwardNo: (outwardNo: string) => Certificate | undefined;
   getCertificateById: (certId: string) => Certificate | undefined;
-  revokeCertificate: (certId: string) => void;
+  revokeCertificate: (certId: string) => Promise<boolean>;
 
   // Registration Cards state
   registrationCards: RegistrationCard[];
@@ -77,7 +77,10 @@ export const useStore = create<StoreState>()(
         }
       },
 
-      updateUserRole: (userId: string, newRole: UserRole) => {
+      updateUserRole: async (userId: string, newRole: UserRole) => {
+        // Persist to Supabase first
+        const saved = await supabaseService.updateProfileRole(userId, newRole);
+        if (!saved) return false;
         set((state) => {
           const updatedUsers = state.allUsers.map((u) =>
             u.id === userId ? { ...u, role: newRole } : u
@@ -88,6 +91,7 @@ export const useStore = create<StoreState>()(
               : state.currentUser;
           return { allUsers: updatedUsers, currentUser: updatedCurrent };
         });
+        return true;
       },
 
       // Courses — starts empty, hydrated from Supabase
@@ -206,38 +210,64 @@ export const useStore = create<StoreState>()(
 
       // Submissions — starts empty
       submissions: [],
-      submitAssignment: (submissionData) => {
+      submitAssignment: async (submissionData) => {
         const student = get().currentUser;
         const studentName = student ? student.fullName : 'Student';
         const existingIndex = get().submissions.findIndex(
           (s) => s.assignmentId === submissionData.assignmentId && s.studentId === submissionData.studentId
         );
 
+        const now = new Date().toISOString();
+
         if (existingIndex >= 0) {
+          // Re-submission: update local state optimistically then upsert to DB
+          const updatedSubmission: AssignmentSubmission = {
+            ...get().submissions[existingIndex],
+            ...submissionData,
+            studentName,
+            status: 'submitted',
+            submittedAt: now,
+          };
           set((state) => {
             const updated = [...state.submissions];
-            updated[existingIndex] = {
-              ...updated[existingIndex],
-              ...submissionData,
-              studentName,
-              status: 'submitted',
-              submittedAt: new Date().toISOString(),
-            };
+            updated[existingIndex] = updatedSubmission;
             return { submissions: updated };
           });
+          const saved = await supabaseService.upsertSubmission(updatedSubmission);
+          if (!saved) {
+            // Revert local change
+            set((state) => {
+              const reverted = [...state.submissions];
+              reverted[existingIndex] = get().submissions[existingIndex];
+              return { submissions: reverted };
+            });
+            return { ok: false, error: 'Submission could not be saved. Please try again.' };
+          }
         } else {
+          // New submission: build the full object, persist first, then add to store
           const newSubmission: AssignmentSubmission = {
             ...submissionData,
             id: `sub-${Date.now()}`,
             studentName,
             status: 'submitted',
-            submittedAt: new Date().toISOString(),
+            submittedAt: now,
           };
+          // Optimistic update
           set((state) => ({ submissions: [newSubmission, ...state.submissions] }));
+          const saved = await supabaseService.insertSubmission(newSubmission);
+          if (!saved) {
+            // Revert local change
+            set((state) => ({
+              submissions: state.submissions.filter((s) => s.id !== newSubmission.id),
+            }));
+            return { ok: false, error: 'Submission could not be saved. Please try again.' };
+          }
         }
+        return { ok: true };
       },
 
-      gradeSubmission: (submissionId, grade, feedback) => {
+      gradeSubmission: async (submissionId, grade, feedback) => {
+        // Optimistic update
         set((state) => ({
           submissions: state.submissions.map((s) =>
             s.id === submissionId
@@ -245,6 +275,19 @@ export const useStore = create<StoreState>()(
               : s
           ),
         }));
+        const saved = await supabaseService.updateSubmissionGrade(submissionId, grade, feedback);
+        if (!saved) {
+          // Revert: restore previous values
+          set((state) => ({
+            submissions: state.submissions.map((s) =>
+              s.id === submissionId
+                ? { ...s, grade: undefined, feedback: undefined, status: 'submitted' }
+                : s
+            ),
+          }));
+          return { ok: false, error: 'Grade could not be saved. Please try again.' };
+        }
+        return { ok: true };
       },
 
       // Certificates — starts empty
@@ -306,12 +349,16 @@ export const useStore = create<StoreState>()(
         return get().certificates.find((c) => c.id === certId);
       },
 
-      revokeCertificate: (certId: string) => {
+      revokeCertificate: async (certId: string) => {
+        // Persist to Supabase first
+        const saved = await supabaseService.updateCertificateStatus(certId, 'REVOKED');
+        if (!saved) return false;
         set((state) => ({
           certificates: state.certificates.map((c) =>
             c.id === certId || c.outwardNo === certId ? { ...c, status: 'REVOKED' } : c
           ),
         }));
+        return true;
       },
 
       // Registration Cards — starts empty

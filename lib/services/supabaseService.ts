@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase/client';
-import { UserProfile, Course, Enrollment, Assignment, AssignmentSubmission, Certificate, RegistrationCard, Payment } from '@/lib/types';
+import { UserProfile, Course, Enrollment, Assignment, AssignmentSubmission, Certificate, RegistrationCard, Payment, UserRole } from '@/lib/types';
 
 export const supabaseService = {
   // Fetch profiles from Supabase
@@ -301,6 +301,70 @@ export const supabaseService = {
         status: regCard.status || 'VALID',
       },
     ]);
+    return !error;
+  },
+  // Insert a new assignment_submission row into Supabase
+  insertSubmission: async (submission: AssignmentSubmission): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
+    const { error } = await supabase.from('assignment_submissions').insert({
+      id: submission.id,
+      assignment_id: submission.assignmentId,
+      student_id: submission.studentId,
+      submission_text: submission.submissionText,
+      file_url: submission.fileUrl || null,
+      status: submission.status,
+      submitted_at: submission.submittedAt,
+    });
+    if (error) console.error('Error inserting submission:', error);
+    return !error;
+  },
+
+  // Upsert an existing submission row (for re-submissions)
+  upsertSubmission: async (submission: AssignmentSubmission): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
+    const { error } = await supabase.from('assignment_submissions').upsert({
+      id: submission.id,
+      assignment_id: submission.assignmentId,
+      student_id: submission.studentId,
+      submission_text: submission.submissionText,
+      file_url: submission.fileUrl || null,
+      status: submission.status,
+      submitted_at: submission.submittedAt,
+    }, { onConflict: 'assignment_id,student_id' });
+    if (error) console.error('Error upserting submission:', error);
+    return !error;
+  },
+
+  // Update grade + feedback on an existing submission
+  updateSubmissionGrade: async (submissionId: string, grade: number, feedback: string): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
+    const { error } = await supabase
+      .from('assignment_submissions')
+      .update({ grade, feedback, status: 'graded' })
+      .eq('id', submissionId);
+    if (error) console.error('Error grading submission:', error);
+    return !error;
+  },
+
+  // Mark a certificate as REVOKED in Supabase
+  updateCertificateStatus: async (certId: string, status: 'VALID' | 'REVOKED'): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
+    const { error } = await supabase
+      .from('certificates')
+      .update({ status })
+      .or(`id.eq.${certId},outward_no.eq.${certId}`);
+    if (error) console.error('Error updating certificate status:', error);
+    return !error;
+  },
+
+  // Update a user's role in the profiles table
+  updateProfileRole: async (userId: string, role: UserRole): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
+    const { error } = await supabase
+      .from('profiles')
+      .update({ role })
+      .eq('id', userId);
+    if (error) console.error('Error updating profile role:', error);
     return !error;
   },
 };

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { Assignment } from '@/lib/types';
 import { useStore } from '@/lib/store/useStore';
-import { Upload, X, CheckCircle, FileText, Link2 } from 'lucide-react';
+import { Upload, X, CheckCircle, FileText, Link2, Loader2 } from 'lucide-react';
 
 interface AssignmentModalProps {
   assignment: Assignment;
@@ -17,22 +17,30 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({ assignment, on
     ? submissions.find((s) => s.assignmentId === assignment.id && s.studentId === currentUser.id)
     : undefined;
 
-  const [submissionText, setSubmissionText] = useState(
-    existingSubmission?.submissionText || ''
-  );
+  const [submissionText, setSubmissionText] = useState(existingSubmission?.submissionText || '');
   const [fileUrl, setFileUrl] = useState(existingSubmission?.fileUrl || '');
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!submissionText.trim() || !currentUser) return;
+    setIsSubmitting(true);
+    setSubmitError('');
 
-    submitAssignment({
+    const result = await submitAssignment({
       assignmentId: assignment.id,
       studentId: currentUser.id,
       submissionText: submissionText.trim(),
       fileUrl: fileUrl.trim() || undefined,
     });
+
+    setIsSubmitting(false);
+    if (!result.ok) {
+      setSubmitError(result.error || 'Submission failed. Please try again.');
+      return;
+    }
 
     setIsSubmitted(true);
     setTimeout(() => {
@@ -99,20 +107,33 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({ assignment, on
               />
             </div>
 
+            {/* Inline error message */}
+            {submitError && (
+              <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2.5 text-sm text-red-300">
+                {submitError}
+              </p>
+            )}
+
             <div className="pt-3 flex justify-end space-x-3">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800"
+                disabled={isSubmitting}
+                className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-50"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-2"
+                disabled={isSubmitting}
+                className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition-all flex items-center space-x-2 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <Upload className="w-4 h-4" />
-                <span>{existingSubmission ? 'Update Submission' : 'Submit Assignment'}</span>
+                {isSubmitting ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                <span>{isSubmitting ? 'Saving...' : existingSubmission ? 'Update Submission' : 'Submit Assignment'}</span>
               </button>
             </div>
           </form>
