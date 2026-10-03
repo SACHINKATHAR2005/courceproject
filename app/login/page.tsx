@@ -3,9 +3,8 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { LogIn, Mail, Lock, ArrowRight, Sparkles, GraduationCap, ShieldCheck } from 'lucide-react';
+import { Mail, Lock, ArrowRight, GraduationCap, ShieldCheck } from 'lucide-react';
 import { useStore } from '@/lib/store/useStore';
-import { supabase } from '@/lib/supabase/client';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -40,103 +39,68 @@ export default function LoginPage() {
 
     setLoading(true);
 
-    if (!supabase) {
-      setError('Authentication is not configured.');
-      setLoading(false);
-      return;
-    }
-
-    const { data, error: authError } = await supabase.auth.signInWithPassword({
-      email: loginEmail,
-      password: loginPassword,
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: loginEmail, password: loginPassword }),
     });
-    if (authError || !data.user) {
-      setError(authError?.message || 'Invalid email or password.');
+    const result = await response.json();
+    if (!response.ok || !result.profile) {
+      setError(result.error || 'Unable to sign in.');
       setLoading(false);
       return;
     }
-
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', data.user.id)
-      .maybeSingle();
-    if (profileError || !profile) {
-      await supabase.auth.signOut();
-      setError('Your account profile is incomplete. Please contact support.');
-      setLoading(false);
-      return;
-    }
-    if (profile.role !== 'student') {
-      await supabase.auth.signOut();
-      setError('Use the staff access page for Instructor or Admin accounts.');
-      setLoading(false);
-      return;
-    }
-    setUser({ id: profile.id, fullName: profile.full_name, email: profile.email, phone: profile.phone, role: profile.role, avatarUrl: profile.avatar_url, createdAt: profile.created_at });
+    setUser(result.profile);
     router.push('/dashboard');
   };
 
-  const handleGoogleLogin = async () => {
-    setError('');
-    if (!supabase) {
-      setError('Authentication is not configured.');
-      return;
-    }
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (oauthError) setError(oauthError.message);
-  };
-
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
-      {/* Background Glows */}
-      <div className="absolute top-10 left-1/3 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-10 right-1/3 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-      <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 text-center">
-        <Link href="/" className="inline-flex items-center gap-2 mb-4 group">
-          <div className="p-2.5 rounded-xl bg-gradient-to-tr from-amber-500 to-amber-400 text-slate-950 font-bold shadow-lg shadow-amber-500/20 group-hover:scale-105 transition-transform">
-            <GraduationCap className="w-6 h-6" />
-          </div>
-          <span className="text-2xl font-black tracking-tight text-white">
-            Learn<span className="text-amber-400">Hub</span>
+    <div className="min-h-[calc(100vh-4rem)] bg-[#F8FAFC] text-[#0F172A] flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      <div className="sm:mx-auto sm:w-full sm:max-w-md z-10 text-center px-4">
+        <Link href="/" className="inline-flex flex-col items-center gap-3 mb-5 group">
+          <span className="flex items-center gap-3">
+            <span className="p-2.5 rounded-xl bg-[#1E3A5F] text-[#B08D57] font-bold shadow-sm group-hover:bg-[#162F4D] transition-colors">
+              <GraduationCap className="w-6 h-6" />
+            </span>
+            <span className="text-left">
+              <span className="block text-2xl font-bold leading-none tracking-tight text-[#0F172A]">
+                Learn<span className="text-[#1E3A5F]">Hub</span> <span className="text-[#B08D57]">Certify</span>
+              </span>
+              <span className="mt-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-[#64748B]">
+                Learn. Practice. Progress.
+              </span>
+            </span>
           </span>
         </Link>
 
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-400/20 text-emerald-300 text-xs font-semibold uppercase tracking-wider mb-3">
-          <ShieldCheck className="w-3.5 h-3.5" /> Student Access Portal
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[#15803D] text-xs font-semibold uppercase tracking-wider mb-3">
+          <ShieldCheck className="w-3.5 h-3.5" /> Student learning portal
         </div>
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">
-          Welcome Back, Student
+        <h1 className="text-3xl font-bold text-[#0F172A] tracking-tight">
+          Welcome back to your learning
         </h1>
-        <p className="mt-2 text-sm text-slate-400 max-w-sm mx-auto">
-          Sign in to access your course progress, submitted work, and authentic student registration card.
+        <p className="mt-2 text-sm text-[#64748B] max-w-sm mx-auto leading-relaxed">
+          Sign in to continue your courses, submit your work, and see the progress you are building.
         </p>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md z-10 px-4">
-        <div className="bg-slate-900/90 backdrop-blur-xl border border-slate-800 py-8 px-6 shadow-2xl rounded-2xl sm:px-10">
+        <div className="bg-white border border-[#E2E8F0] py-8 px-6 shadow-sm rounded-2xl sm:px-10">
 
           {error && (
-            <div className="mb-6 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-medium flex items-center justify-between">
+            <div className="mb-6 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs font-medium flex items-center justify-between">
               <span>{error}</span>
-              <Link href="/register" className="underline font-bold text-red-300 hover:text-white">
-                Register now
-              </Link>
             </div>
           )}
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             {/* Email */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Student Email <span className="text-amber-400">*</span>
+              <label className="block text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">
+                Student Email <span className="text-[#B08D57]">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#94A3B8]">
                   <Mail className="h-4 w-4" />
                 </div>
                 <input
@@ -145,18 +109,18 @@ export default function LoginPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="samantha@example.com"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-[#CBD5E1] rounded-xl text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F] transition-colors"
                 />
               </div>
             </div>
 
             {/* Password */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Password <span className="text-amber-400">*</span>
+              <label className="block text-xs font-semibold text-[#475569] uppercase tracking-wider mb-2">
+                Password <span className="text-[#B08D57]">*</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-[#94A3B8]">
                   <Lock className="h-4 w-4" />
                 </div>
                 <input
@@ -165,7 +129,7 @@ export default function LoginPage() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400 transition-colors"
+                  className="w-full pl-10 pr-4 py-3 bg-white border border-[#CBD5E1] rounded-xl text-sm text-[#0F172A] placeholder-[#94A3B8] focus:outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F] transition-colors"
                 />
               </div>
             </div>
@@ -174,10 +138,10 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-lg text-sm font-bold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-amber-400 disabled:opacity-50 transition-all cursor-pointer"
+              className="w-full flex justify-center items-center gap-2 py-3 px-4 border border-transparent rounded-xl shadow-sm text-sm font-semibold text-white bg-[#1E3A5F] hover:bg-[#162F4D] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#1E3A5F] disabled:opacity-50 transition-all cursor-pointer"
             >
               {loading ? (
-                <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   Sign In to Dashboard
@@ -187,22 +151,9 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <div className="my-5 flex items-center gap-3 text-[10px] uppercase tracking-wider text-slate-500">
-            <span className="h-px flex-1 bg-slate-800" />
-            <span>or</span>
-            <span className="h-px flex-1 bg-slate-800" />
-          </div>
-          <button type="button" onClick={handleGoogleLogin} className="w-full rounded-xl border border-slate-700 bg-white py-3 text-sm font-bold text-slate-900 hover:bg-slate-100">
-            Continue with Google
-          </button>
-
-          {/* Footer Link to Register */}
-          <div className="mt-6 border-t border-slate-800 pt-5 text-center">
-            <p className="text-xs text-slate-400">
-              Don&apos;t have a student account yet?{' '}
-              <Link href="/register" className="font-semibold text-amber-400 hover:text-amber-300 transition-colors">
-                Create new registration
-              </Link>
+          <div className="mt-6 border-t border-[#E2E8F0] pt-5 text-center">
+            <p className="text-xs text-[#64748B]">
+              Student accounts are created by an authorized instructor or administrator.
             </p>
           </div>
         </div>

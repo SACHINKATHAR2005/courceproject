@@ -4,7 +4,7 @@ import React, { useRef, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Certificate } from '@/lib/types';
 import { CertificateQRCode } from './qr-code';
-import { Award, Printer, ShieldCheck, Share2, ExternalLink, CheckCircle } from 'lucide-react';
+import { Award, Printer, ShieldCheck, Share2, ExternalLink, CheckCircle, Download } from 'lucide-react';
 import Link from 'next/link';
 
 interface CertificateCardProps {
@@ -41,6 +41,17 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleDownloadHtml = () => {
+    if (!certRef.current) return;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${certificate.outwardNo}</title><style>body{margin:0;padding:32px;background:#f8fafc;color:#0f172a;font-family:Georgia,serif}.certificate{max-width:900px;margin:auto;padding:56px;background:white;border:2px solid #b08d57}.header,.footer{display:flex;justify-content:space-between;gap:24px;border-bottom:1px solid #e2e8f0;padding-bottom:24px}.footer{border-top:1px solid #e2e8f0;border-bottom:0;padding-top:24px;margin-top:32px}.center{text-align:center}.qr{text-align:center;font-family:monospace}h1{font-size:36px}h2{font-size:28px}p{line-height:1.6}@media(max-width:640px){body{padding:12px}.certificate{padding:24px}.header,.footer{display:block}h1{font-size:28px}}</style></head><body><main class="certificate">${certRef.current.innerHTML}</main></body></html>`;
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${certificate.outwardNo}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleCopyLink = () => {
@@ -131,7 +142,7 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
 
         {/* Footer: Signatures, Stamp & QR Code */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end pt-6 border-t border-[#E2E8F0] mt-8">
-          
+
           {/* Left: Issue Date */}
           <div className="text-center md:text-left space-y-1">
             <p className="text-[10px] font-bold text-[#64748B] uppercase tracking-wider">
@@ -189,6 +200,14 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
         >
           <Printer className="w-4 h-4" />
           <span>Print / Save PDF</span>
+        </button>
+
+        <button
+          onClick={handleDownloadHtml}
+          className="px-5 py-2.5 rounded-lg bg-[#B08D57] hover:bg-[#967442] text-white font-semibold text-xs shadow-sm transition-colors flex items-center space-x-2 cursor-pointer"
+        >
+          <Download className="w-4 h-4" />
+          <span>Download HTML</span>
         </button>
 
         <button

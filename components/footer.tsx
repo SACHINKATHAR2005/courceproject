@@ -3,11 +3,8 @@
 import React from 'react';
 import Link from 'next/link';
 import { Award, ShieldCheck } from 'lucide-react';
-import { useStore } from '@/lib/store/useStore';
 
 export const Footer: React.FC = () => {
-  const currentUser = useStore((state) => state.currentUser);
-
   return (
     <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 text-xs py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 space-y-8">
@@ -27,8 +24,7 @@ export const Footer: React.FC = () => {
             </p>
           </div>
 
-          {/* Public links stay out of authenticated staff workspaces. */}
-          {!currentUser && <div className="flex flex-wrap gap-8 text-xs font-medium">
+          <div className="flex flex-wrap gap-8 text-xs font-medium">
             <div className="space-y-2">
               <span className="block font-semibold uppercase tracking-wider text-[11px] text-slate-400">Platform</span>
               <ul className="space-y-1.5">
@@ -38,21 +34,21 @@ export const Footer: React.FC = () => {
               </ul>
             </div>
             <div className="space-y-2">
-              <span className="block font-semibold uppercase tracking-wider text-[11px] text-slate-400">Portals</span>
+              <span className="block font-semibold uppercase tracking-wider text-[11px] text-slate-400">Support</span>
               <ul className="space-y-1.5">
                 <li><Link href="/login" className="hover:text-white transition-colors">Student Sign In</Link></li>
-                <li><Link href="/register" className="hover:text-white transition-colors">Student Registration</Link></li>
-              </ul>
-            </div>
-            <div className="space-y-2">
-              <span className="block font-semibold uppercase tracking-wider text-[11px] text-slate-400">Institutional</span>
-              <ul className="space-y-1.5">
-                <li><span className="text-slate-500">Privacy Policy</span></li>
-                <li><span className="text-slate-500">Terms of Service</span></li>
+                <li><span className="text-slate-500">Help Center</span></li>
                 <li><span className="text-slate-500">Contact Institution</span></li>
               </ul>
             </div>
-          </div>}
+            <div className="space-y-2">
+              <span className="block font-semibold uppercase tracking-wider text-[11px] text-slate-400">Legal</span>
+              <ul className="space-y-1.5">
+                <li><span className="text-slate-500">Privacy Policy</span></li>
+                <li><span className="text-slate-500">Terms of Service</span></li>
+              </ul>
+            </div>
+          </div>
         </div>
 
         {/* Bottom Bar */}

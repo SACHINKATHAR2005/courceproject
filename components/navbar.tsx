@@ -1,32 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { supabase } from '@/lib/supabase/client';
 import {
   Award,
-  BookOpen,
-  GraduationCap,
+  ClipboardList,
+  Bell,
   ShieldCheck,
   LogOut,
-  LogIn,
-  UserPlus,
   Menu,
   X
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const pathname = usePathname();
   const router = useRouter();
   const { currentUser, logoutUser } = useStore();
-  const [mounted, setMounted] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleLogout = async () => {
     await supabase?.auth.signOut();
@@ -34,22 +26,9 @@ export const Navbar: React.FC = () => {
     router.push('/');
   };
 
-  if (!mounted) {
-    return (
-      <header className="h-16 border-b border-[#E2E8F0] bg-white sticky top-0 z-50 px-4 flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Award className="w-6 h-6 text-[#1E3A5F]" />
-          <span className="font-bold text-lg text-[#0F172A]">
-            LearnHub Certify
-          </span>
-        </div>
-      </header>
-    );
-  }
-
   return (
     <header className="sticky top-0 z-50 border-b border-[#E2E8F0] bg-white/95 backdrop-blur-md transition-all">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div className="w-full px-4 sm:px-6 lg:px-10 h-16 flex items-center justify-between">
 
         {/* Brand Logo */}
         <Link href="/" className="flex items-center space-x-3 group">
@@ -80,7 +59,9 @@ export const Navbar: React.FC = () => {
             >
               <span>Dashboard</span>
             </Link>
-            <Link href="/dashboard#my-courses" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569]">My Courses</Link>
+            <Link href="/dashboard/courses" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569]">My Courses</Link>
+            <Link href="/dashboard/assignments" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569] flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" />Assignments</Link>
+            <Link href="/dashboard/certificates" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569] flex items-center gap-1.5"><Award className="h-3.5 w-3.5" />Certificates</Link>
             <Link href="/verify" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569]">Verify</Link>
           </>}
           {currentUser?.role === 'instructor' && <Link href="/instructor" className="px-3.5 py-2 rounded-lg text-sm font-semibold text-indigo-700">Instructor Portal</Link>}
@@ -91,10 +72,13 @@ export const Navbar: React.FC = () => {
         <div className="hidden md:flex items-center space-x-3">
           {currentUser ? (
             <div className="flex items-center space-x-3">
+              <button type="button" title="Notifications" aria-label="Notifications" className="relative rounded-lg border border-[#E2E8F0] bg-white p-2 text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#18375f]">
+                <Bell className="h-4 w-4" />
+              </button>
               {/* Profile Pill */}
               <div className="flex items-center space-x-2 px-3 py-1.5 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] text-xs text-[#0F172A]">
-                <span className="w-2 h-2 rounded-full bg-[#15803D]" />
-                <span className="font-semibold truncate max-w-[140px]">{currentUser.fullName}</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800">{currentUser.fullName.charAt(0).toUpperCase()}</span>
+                <span className="font-semibold truncate max-w-35">{currentUser.fullName}</span>
               </div>
 
               {/* Sign Out Button */}
@@ -115,27 +99,12 @@ export const Navbar: React.FC = () => {
                 Sign In
               </Link>
 
-              <Link
-                href="/register"
-                className="px-4 py-2 rounded-lg bg-[#1E3A5F] hover:bg-[#162F4D] text-white font-semibold text-xs shadow-sm transition-all flex items-center space-x-1.5"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Get Started</span>
-              </Link>
             </div>
           )}
         </div>
 
         {/* Mobile menu toggle */}
         <div className="md:hidden flex items-center space-x-2">
-          {!currentUser && (
-            <Link
-              href="/register"
-              className="px-3 py-1.5 rounded-lg bg-[#1E3A5F] text-white font-semibold text-xs"
-            >
-              Get Started
-            </Link>
-          )}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="p-2 text-[#475569] hover:text-[#0F172A]"
@@ -162,7 +131,9 @@ export const Navbar: React.FC = () => {
               >
                 {currentUser.role === 'admin' ? 'Admin Portal' : currentUser.role === 'instructor' ? 'Instructor Portal' : `Student Dashboard (${currentUser.fullName})`}
               </Link>
-              {currentUser.role === 'student' && <Link href="/dashboard#my-courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 rounded-lg text-[#0F172A] text-sm font-medium">My Courses</Link>}
+              {currentUser.role === 'student' && <Link href="/dashboard/courses" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 rounded-lg text-[#0F172A] text-sm font-medium">My Courses</Link>}
+              {currentUser.role === 'student' && <Link href="/dashboard/assignments" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 rounded-lg text-[#0F172A] text-sm font-medium">Assignments & Notes</Link>}
+              {currentUser.role === 'student' && <Link href="/dashboard/certificates" onClick={() => setIsMobileMenuOpen(false)} className="block px-3 py-2 rounded-lg text-[#0F172A] text-sm font-medium">Certificates</Link>}
               <button
                 onClick={() => {
                   setIsMobileMenuOpen(false);
@@ -181,13 +152,6 @@ export const Navbar: React.FC = () => {
                 className="w-full text-center px-4 py-2 rounded-lg bg-[#F1F5F9] text-[#0F172A] font-semibold text-sm"
               >
                 Sign In
-              </Link>
-              <Link
-                href="/register"
-                onClick={() => setIsMobileMenuOpen(false)}
-                className="w-full text-center px-4 py-2 rounded-lg bg-[#1E3A5F] text-white font-semibold text-sm"
-              >
-                Get Started
               </Link>
             </div>
           )}

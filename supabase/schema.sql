@@ -131,10 +131,10 @@ CREATE POLICY "Instructors and Admins can delete courses"
     USING (
         EXISTS (
             SELECT 1 FROM public.profiles 
-            WHERE id = auth.uid() AND role IN ('instructor', 'admin')
+            WHERE id = auth.uid() AND role = 'instructor'
         )
+        AND instructor_id = auth.uid()
     );
-
 
 -- ----------------------------------------------------------------------------
 -- 3. ENROLLMENTS TABLE
@@ -169,6 +169,52 @@ CREATE POLICY "Instructors and Admins can update enrollment completion"
     USING (EXISTS (
         SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role IN ('instructor', 'admin')
     ));
+
+-- Private curriculum files are stored in Supabase Storage. Only the course
+-- instructor, admins, and enrolled students can receive signed download URLs.
+CREATE TABLE IF NOT EXISTS public.course_materials (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    course_id UUID NOT NULL UNIQUE REFERENCES public.courses(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    storage_path TEXT NOT NULL UNIQUE,
+    mime_type TEXT NOT NULL,
+    file_size INTEGER NOT NULL CHECK (file_size > 0),
+    uploaded_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.course_materials ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Course material metadata is visible to authorized users" ON public.course_materials;
+CREATE POLICY "Course material metadata is visible to authorized users"
+    ON public.course_materials FOR SELECT USING (
+        public.current_user_role() = 'admin'
+        OR EXISTS (
+            SELECT 1 FROM public.courses
+            WHERE courses.id = course_materials.course_id
+              AND courses.instructor_id = auth.uid()
+        )
+        OR EXISTS (
+            SELECT 1 FROM public.enrollments
+            WHERE enrollments.course_id = course_materials.course_id
+              AND enrollments.student_id = auth.uid()
+        )
+    );
+
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('course-materials', 'course-materials', false)
+ON CONFLICT (id) DO UPDATE SET public = false;
+
+DROP POLICY IF EXISTS "Course instructors can delete curriculum files" ON storage.objects;
+CREATE POLICY "Course instructors can delete curriculum files"
+    ON storage.objects FOR DELETE TO authenticated USING (
+        bucket_id = 'course-materials'
+        AND EXISTS (
+            SELECT 1 FROM public.courses
+            WHERE courses.id = split_part(name, '/', 1)::uuid
+              AND courses.instructor_id = auth.uid()
+        )
+    );
 
 -- ----------------------------------------------------------------------------
 -- 3b. PAYMENTS (Razorpay transaction ledger)
@@ -262,6 +308,77 @@ CREATE POLICY "Instructors can update their assignments"
         )
     );
 
+CREATE TABLE IF NOT EXISTS public.assignment_materials (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    assignment_id UUID NOT NULL UNIQUE REFERENCES public.assignments(id) ON DELETE CASCADE,
+    file_name TEXT NOT NULL,
+    storage_path TEXT NOT NULL UNIQUE,
+    mime_type TEXT NOT NULL DEFAULT 'application/pdf',
+    file_size INTEGER NOT NULL CHECK (file_size > 0),
+    uploaded_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.assignment_materials ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Assignment materials are visible to authorized users" ON public.assignment_materials;
+CREATE POLICY "Assignment materials are visible to authorized users"
+    ON public.assignment_materials FOR SELECT USING (
+        public.current_user_role() = 'admin'
+        OR EXISTS (
+            SELECT 1 FROM public.assignments
+            JOIN public.courses ON courses.id = assignments.course_id
+            WHERE assignments.id = assignment_materials.assignment_id
+              AND courses.instructor_id = auth.uid()
+        )
+        OR EXISTS (
+            SELECT 1 FROM public.assignments
+            JOIN public.enrollments ON enrollments.course_id = assignments.course_id
+            WHERE assignments.id = assignment_materials.assignment_id
+              AND enrollments.student_id = auth.uid()
+        )
+    );
+
+CREATE TABLE IF NOT EXISTS public.course_notes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    course_id UUID NOT NULL REFERENCES public.courses(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    file_name TEXT,
+    storage_path TEXT UNIQUE,
+    mime_type TEXT,
+    file_size INTEGER,
+    created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.course_notes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Course notes are visible to authorized users" ON public.course_notes;
+CREATE POLICY "Course notes are visible to authorized users"
+    ON public.course_notes FOR SELECT USING (
+        public.current_user_role() = 'admin'
+        OR EXISTS (
+            SELECT 1 FROM public.courses
+            WHERE courses.id = course_notes.course_id
+              AND courses.instructor_id = auth.uid()
+        )
+        OR EXISTS (
+            SELECT 1 FROM public.enrollments
+            WHERE enrollments.course_id = course_notes.course_id
+              AND enrollments.student_id = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Instructors create course notes" ON public.course_notes;
+CREATE POLICY "Instructors create course notes"
+    ON public.course_notes FOR INSERT WITH CHECK (
+        public.current_user_role() = 'admin'
+        OR EXISTS (
+            SELECT 1 FROM public.courses
+            WHERE courses.id = course_notes.course_id
+              AND courses.instructor_id = auth.uid()
+        )
+    );
+
 
 -- ----------------------------------------------------------------------------
 -- 5. ASSIGNMENT SUBMISSIONS TABLE
@@ -320,6 +437,19 @@ CREATE TABLE IF NOT EXISTS public.certificates (
 
 CREATE INDEX IF NOT EXISTS idx_certificates_outward_no ON public.certificates(outward_no);
 ALTER TABLE public.certificates ENABLE ROW LEVEL SECURITY;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'certificates_one_per_student_course'
+          AND conrelid = 'public.certificates'::regclass
+    ) THEN
+        ALTER TABLE public.certificates
+            ADD CONSTRAINT certificates_one_per_student_course UNIQUE (student_id, course_id);
+    END IF;
+END;
+$$;
 
 DROP POLICY IF EXISTS "Certificates are publicly viewable for verification" ON public.certificates;
 DROP POLICY IF EXISTS "Students and staff can view certificates" ON public.certificates;
@@ -416,6 +546,29 @@ FROM public.registrations;
 
 GRANT SELECT ON public.certificate_verification TO anon, authenticated;
 GRANT SELECT ON public.registration_verification TO anon, authenticated;
+
+-- ----------------------------------------------------------------------------
+-- 9. EMAIL QUEUE (One-time student credentials)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.email_queue (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    to_email TEXT NOT NULL,
+    recipient_name TEXT NOT NULL,
+    initial_password TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT 'Your LearnHub student account is ready',
+    status TEXT NOT NULL CHECK (status IN ('pending', 'sending', 'sent', 'failed')) DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    queued_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    sent_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_queue_pending ON public.email_queue(status, queued_at);
+ALTER TABLE public.email_queue ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Staff can view email queue" ON public.email_queue;
+CREATE POLICY "Staff can view email queue"
+    ON public.email_queue FOR SELECT USING (public.current_user_role() IN ('admin', 'instructor'));
 
 
 -- ----------------------------------------------------------------------------

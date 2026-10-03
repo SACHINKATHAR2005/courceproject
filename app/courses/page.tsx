@@ -5,7 +5,15 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { supabaseService } from '@/lib/services/supabaseService';
 import { enrollInCourse as enrollWithPayment } from '@/lib/services/paymentService';
+import { getCoursePaymentBreakdown } from '@/lib/payment';
+import { ToastMessage } from '@/components/ui/toast-message';
 import { BookOpen, Search, CheckCircle2, UserCheck, Clock, CalendarDays } from 'lucide-react';
+
+function formatCourseDate(value?: string) {
+  if (!value) return 'Start date TBD';
+  const parsed = new Date(value.includes('-') ? `${value}T00:00:00` : value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
+}
 
 export default function CoursesPage() {
   const { courses, currentUser, enrollments } = useStore();
@@ -13,18 +21,23 @@ export default function CoursesPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [loading, setLoading] = useState(courses.length === 0);
   const [processingCourseId, setProcessingCourseId] = useState<string | null>(null);
-  const [enrollmentError, setEnrollmentError] = useState('');
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
+
+  const showToast = (message: string, tone: 'success' | 'error' = 'success') => {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 3500);
+  };
 
   // Fetch courses from Supabase on mount (public page — no auth required)
   useEffect(() => {
-    if (courses.length > 0) { setLoading(false); return; }
+    if (courses.length > 0) return;
     supabaseService.fetchCourses().then((dbCourses) => {
       if (dbCourses.length > 0) {
         useStore.setState({ courses: dbCourses });
       }
       setLoading(false);
     });
-  }, []);
+  }, [courses.length]);
 
   const categories = ['All', 'Web Development', 'Backend & Cloud', 'UI/UX Design'];
 
@@ -44,7 +57,7 @@ export default function CoursesPage() {
           <BookOpen className="w-4 h-4" />
           <span>Curriculum Catalog</span>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold text-white">Course Directory</h1>
+        <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-950">Course Directory</h1>
         <p className="text-sm text-slate-400 max-w-2xl">
           Browse specialized technical courses. Enroll to access project assignments and earn your verifiable completion certificate.
         </p>
@@ -92,6 +105,7 @@ export default function CoursesPage() {
             const isEnrolled = currentUser
               ? enrollments.some((e) => e.studentId === currentUser.id && e.courseId === course.id)
               : false;
+            const paymentBreakdown = getCoursePaymentBreakdown(course.registrationFee || 0);
 
             return (
               <div
@@ -129,8 +143,8 @@ export default function CoursesPage() {
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-300">
-                      <span className="text-emerald-300">{course.registrationFee ? `₹${course.registrationFee.toFixed(2)}` : 'Free'}</span>
-                      <span className="flex items-center gap-1 text-slate-400"><CalendarDays className="h-3.5 w-3.5" />{course.startDate ? new Date(`${course.startDate}T00:00:00`).toLocaleDateString() : 'Start date TBD'}</span>
+                      <span className="text-emerald-300">{paymentBreakdown.total ? `₹${paymentBreakdown.total.toFixed(2)} total` : 'Free'}</span>
+                      <span className="flex items-center gap-1 text-slate-400"><CalendarDays className="h-3.5 w-3.5" />{formatCourseDate(course.startDate)}</span>
                     </div>
                   </div>
                 </div>
@@ -153,15 +167,14 @@ export default function CoursesPage() {
                       <button
                         onClick={async () => {
                           if (!currentUser) {
-                            window.location.href = '/register';
+                            window.location.href = '/login';
                           } else {
                             setProcessingCourseId(course.id);
-                            setEnrollmentError('');
                             try {
                               await enrollWithPayment(course.id, course.registrationFee || 0, { fullName: currentUser.fullName, email: currentUser.email, phone: currentUser.phone });
                               window.location.href = '/dashboard';
                             } catch (error) {
-                              setEnrollmentError(error instanceof Error ? error.message : 'Enrollment failed.');
+                              showToast(error instanceof Error ? error.message : 'Enrollment failed.', 'error');
                             } finally {
                               setProcessingCourseId(null);
                             }
@@ -181,7 +194,7 @@ export default function CoursesPage() {
         </div>
       )}
 
-      {enrollmentError && <p className="mx-auto max-w-xl rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-center text-sm text-red-300">{enrollmentError}</p>}
+      {toast && <ToastMessage message={toast.message} tone={toast.tone} onDismiss={() => setToast(null)} />}
 
     </div>
   );

@@ -1,23 +1,16 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
-import { CertificateQRCode } from '@/components/qr-code';
 import {
   Search,
-  Award,
   BookOpen,
   ShieldCheck,
   GraduationCap,
   CheckCircle2,
   ArrowRight,
-  Share2,
-  FileCheck,
-  UserCheck,
-  Clock,
-  Building2,
   Check
 } from 'lucide-react';
 
@@ -25,11 +18,6 @@ export default function HomePage() {
   const router = useRouter();
   const { courses, currentUser, enrollInCourse, enrollments } = useStore();
   const [searchOutwardNo, setSearchOutwardNo] = useState('');
-  const [mounted, setMounted] = useState(false);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleVerifySearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,14 +27,12 @@ export default function HomePage() {
 
   const handleEnrollClick = (courseId: string) => {
     if (!currentUser) {
-      router.push('/register');
+      router.push('/login');
     } else {
       enrollInCourse(currentUser.id, courseId);
       router.push('/dashboard');
     }
   };
-
-  if (!mounted) return null;
 
   return (
     <div className="space-y-24 pb-24 text-[#0F172A]">
@@ -58,16 +44,16 @@ export default function HomePage() {
           {/* Hero Left Content */}
           <div className="lg:col-span-7 space-y-6 text-left">
             <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-[#F1F5F9] border border-[#E2E8F0] text-[#1E3A5F] text-xs font-semibold">
-              <ShieldCheck className="w-4 h-4 text-[#15803D]" />
-              <span>Verified Digital Credentials</span>
+              <GraduationCap className="w-4 h-4 text-[#15803D]" />
+              <span>Learning that moves you forward</span>
             </div>
 
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[#0F172A] leading-[1.15]">
-              Credentials that speak for your work.
+              Learn skills. Build confidence. Open new doors.
             </h1>
 
             <p className="text-base sm:text-lg text-[#475569] leading-relaxed max-w-2xl font-normal">
-              Complete courses, build your skills, and earn verifiable credentials issued by your institution.
+              Practical courses, patient guidance, and a place to turn curiosity into capability. Learn at your pace, practice with purpose, and grow into the opportunities ahead.
             </p>
 
             {/* CTAs */}
@@ -76,7 +62,7 @@ export default function HomePage() {
                 href="/courses"
                 className="px-6 py-3.5 rounded-lg bg-[#1E3A5F] hover:bg-[#162F4D] text-white font-semibold text-sm transition-all shadow-sm flex items-center space-x-2"
               >
-                <span>Explore Courses</span>
+                <span>Start learning</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
               <Link
@@ -84,74 +70,64 @@ export default function HomePage() {
                 className="px-6 py-3.5 rounded-lg bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-sm border border-[#E2E8F0] transition-all flex items-center space-x-2"
               >
                 <ShieldCheck className="w-4 h-4 text-[#15803D]" />
-                <span>Verify a Credential</span>
+                <span>See how it works</span>
               </Link>
             </div>
 
             <div className="pt-4 flex items-center space-x-6 text-xs text-[#64748B]">
               <span className="flex items-center space-x-1.5">
                 <Check className="w-4 h-4 text-[#15803D]" />
-                <span>Official Institution Records</span>
+                <span>Learn by doing</span>
               </span>
               <span className="flex items-center space-x-1.5">
                 <Check className="w-4 h-4 text-[#15803D]" />
-                <span>Instant QR Verification</span>
+                <span>Progress you can see</span>
               </span>
             </div>
           </div>
 
-          {/* Hero Right: Institutional Credential Preview Card */}
+          {/* Hero Right: Learning journey preview */}
           <div className="lg:col-span-5">
             <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 sm:p-8 shadow-sm space-y-6 relative overflow-hidden">
-              {/* Subtle Institutional Header Bar */}
               <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4">
                 <div className="flex items-center space-x-2.5">
-                  <div className="p-1.5 rounded-md bg-[#1E3A5F] text-[#B08D57]">
-                    <Building2 className="w-4 h-4" />
+                  <div className="p-1.5 rounded-md bg-emerald-50 text-[#15803D]">
+                    <BookOpen className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-[#0F172A]">LearnHub Institute</p>
-                    <p className="text-[10px] text-[#64748B]">Verified Academic Authority</p>
+                    <p className="text-xs font-bold text-[#0F172A]">Your learning path</p>
+                    <p className="text-[10px] text-[#64748B]">Small steps. Real progress.</p>
                   </div>
                 </div>
-                <span className="px-2.5 py-1 rounded bg-emerald-50 text-[#15803D] border border-emerald-200 text-[10px] font-bold uppercase tracking-wider">
-                  Verified Active
+                <span className="px-2.5 py-1 rounded bg-[#F1F5F9] text-[#1E3A5F] border border-[#E2E8F0] text-[10px] font-bold uppercase tracking-wider">
+                  Keep going
                 </span>
               </div>
 
-              {/* Certificate Details Body */}
               <div className="space-y-4">
                 <div>
-                  <span className="text-[10px] uppercase font-bold tracking-widest text-[#B08D57]">Official Credential</span>
-                  <h3 className="text-xl font-bold text-[#0F172A] mt-0.5">Certificate of Completion</h3>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-[#B08D57]">A course that meets you where you are</span>
+                  <h3 className="text-xl font-bold text-[#0F172A] mt-0.5">Build something you are proud of.</h3>
                 </div>
 
-                <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-4 rounded-xl space-y-2">
-                  <p className="text-xs text-[#64748B]">Issued to Student</p>
-                  <p className="text-base font-bold text-[#0F172A]">Verified learner record</p>
-                  <p className="text-xs text-[#475569]">Course completion credential</p>
+                <div className="bg-[#F8FAFC] border border-[#E2E8F0] p-4 rounded-xl space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-[#0F172A]">Course progress</span>
+                    <span className="font-bold text-[#15803D]">60%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[#E2E8F0] overflow-hidden"><div className="h-full w-3/5 rounded-full bg-[#15803D]" /></div>
+                  <p className="text-xs text-[#475569]">Learn a concept, try it yourself, then use it in a meaningful project.</p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-xs border-t border-b border-[#E2E8F0] py-3">
-                  <div>
-                    <span className="text-[#64748B] block text-[10px] uppercase font-semibold">Issue Date</span>
-                    <span className="font-semibold text-[#0F172A]">Sept 11, 2026</span>
-                  </div>
-                  <div>
-                    <span className="text-[#64748B] block text-[10px] uppercase font-semibold">Credential ID</span>
-                    <span className="font-mono font-semibold text-[#1E3A5F]">Verified on lookup</span>
-                  </div>
+                <div className="grid grid-cols-3 gap-2 text-center text-xs border-t border-b border-[#E2E8F0] py-3">
+                  <div><BookOpen className="w-4 h-4 mx-auto mb-1 text-[#1E3A5F]" /><span className="font-semibold text-[#0F172A]">Learn</span></div>
+                  <div><CheckCircle2 className="w-4 h-4 mx-auto mb-1 text-[#15803D]" /><span className="font-semibold text-[#0F172A]">Practice</span></div>
+                  <div><GraduationCap className="w-4 h-4 mx-auto mb-1 text-[#B08D57]" /><span className="font-semibold text-[#0F172A]">Grow</span></div>
                 </div>
 
-                {/* QR Code & Sign Off */}
-                <div className="flex items-center justify-between pt-1">
-                  <div className="w-14 h-14 p-1 bg-white border border-[#E2E8F0] rounded-lg">
-                    <CertificateQRCode value="https://learnhub.cert/verify" size={48} />
-                  </div>
-                  <div className="text-right space-y-0.5">
-                    <span className="block text-[10px] font-bold text-[#0F172A] uppercase tracking-wider">Institutionally issued</span>
-                    <span className="block text-[9px] text-[#64748B]">Public record lookup</span>
-                  </div>
+                <div className="flex items-center space-x-2 pt-1 text-xs text-[#64748B]">
+                  <ShieldCheck className="w-4 h-4 text-[#15803D]" />
+                  <span>When you finish, your achievement can be verified too.</span>
                 </div>
               </div>
             </div>
@@ -164,35 +140,35 @@ export default function HomePage() {
       <section id="about" className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 lg:p-12 space-y-10 shadow-sm">
           <div className="text-center max-w-xl mx-auto space-y-2">
-            <span className="text-xs uppercase font-semibold tracking-wider text-[#B08D57]">Platform Integrity</span>
-            <h2 className="text-2xl sm:text-3xl font-bold text-[#0F172A]">One credential. One verifiable record.</h2>
+            <span className="text-xs uppercase font-semibold tracking-wider text-[#B08D57]">Education first</span>
+            <h2 className="text-2xl sm:text-3xl font-bold text-[#0F172A]">A place to learn, practice, and move forward.</h2>
             <p className="text-xs sm:text-sm text-[#64748B]">
-              Built for students, instructors, and verifiers with complete accountability and transparency.
+              The record matters because the learning came first. We help students build useful skills and give instructors a clear way to support their progress.
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="space-y-3 p-6 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
               <span className="text-xs font-bold text-[#B08D57]">01</span>
-              <h3 className="text-base font-bold text-[#0F172A]">Institutionally Issued</h3>
+              <h3 className="text-base font-bold text-[#0F172A]">Learn with direction</h3>
               <p className="text-xs text-[#475569] leading-relaxed">
-                Credentials are issued by participating institutions and verified instructors upon complete evaluation of course work.
+                Follow thoughtful courses led by instructors who make complex ideas approachable and useful.
               </p>
             </div>
 
             <div className="space-y-3 p-6 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
               <span className="text-xs font-bold text-[#B08D57]">02</span>
-              <h3 className="text-base font-bold text-[#0F172A]">Easy to Verify</h3>
+              <h3 className="text-base font-bold text-[#0F172A]">Practice with purpose</h3>
               <p className="text-xs text-[#475569] leading-relaxed">
-                Every credential has a unique verification ID and a dedicated public lookup page accessible anytime worldwide.
+                Work through assignments and projects that turn new knowledge into confidence you can carry forward.
               </p>
             </div>
 
             <div className="space-y-3 p-6 bg-[#F8FAFC] rounded-xl border border-[#E2E8F0]">
               <span className="text-xs font-bold text-[#B08D57]">03</span>
-              <h3 className="text-base font-bold text-[#0F172A]">Built to Share</h3>
+              <h3 className="text-base font-bold text-[#0F172A]">Carry proof of your growth</h3>
               <p className="text-xs text-[#475569] leading-relaxed">
-                Students can share their achievements with employers, academic institutions, and professional networks seamlessly.
+                A verifiable certificate is there when you need it, as a record of the work you have actually completed.
               </p>
             </div>
           </div>

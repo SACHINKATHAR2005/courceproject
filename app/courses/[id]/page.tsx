@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
 import { supabaseService } from '@/lib/services/supabaseService';
 import { enrollInCourse as enrollWithPayment } from '@/lib/services/paymentService';
+import { getCoursePaymentBreakdown } from '@/lib/payment';
 import { AssignmentModal } from '@/components/assignment-modal';
 import { Assignment } from '@/lib/types';
 import {
@@ -19,6 +20,21 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 
+type CurriculumMaterial = {
+  file_name: string;
+  mime_type: string;
+  file_size: number;
+  created_at: string;
+  url?: string;
+  requiresLogin?: boolean;
+};
+
+function formatCourseDate(value?: string) {
+  if (!value) return 'Date TBD';
+  const parsed = new Date(value.includes('-') ? `${value}T00:00:00` : value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString();
+}
+
 export default function CourseDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -29,6 +45,8 @@ export default function CourseDetailPage() {
   const [activeAssignmentForSubmission, setActiveAssignmentForSubmission] = useState<Assignment | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [enrollmentError, setEnrollmentError] = useState('');
+  const [curriculum, setCurriculum] = useState<CurriculumMaterial | null>(null);
+  const [curriculumError, setCurriculumError] = useState('');
 
   // Fetch courses from Supabase if store is empty (e.g. direct URL navigation)
   useEffect(() => {
@@ -51,6 +69,17 @@ export default function CourseDetailPage() {
   const issuedCert = currentUser
     ? certificates.find((c) => c.studentId === currentUser.id && c.courseId === courseId)
     : undefined;
+  const paymentBreakdown = getCoursePaymentBreakdown(course?.registrationFee || 0);
+
+  useEffect(() => {
+    fetch(`/api/courses/${courseId}/curriculum`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Curriculum could not be loaded.');
+        setCurriculum(result.material);
+      })
+      .catch((error) => setCurriculumError(error instanceof Error ? error.message : 'Curriculum could not be loaded.'));
+  }, [courseId, currentUser?.id, isEnrolled]);
 
   if (!course) {
     return (
@@ -104,17 +133,17 @@ export default function CourseDetailPage() {
               </span>
               <span className="flex items-center space-x-1.5">
                 <CalendarDays className="w-4 h-4 text-amber-400" />
-                <span>Starts: <strong>{course.startDate ? new Date(`${course.startDate}T00:00:00`).toLocaleDateString() : 'Date TBD'}</strong></span>
+                <span>Starts: <strong>{formatCourseDate(course.startDate)}</strong></span>
               </span>
               <span className="font-bold text-emerald-300">
-                {course.registrationFee ? `Fee: ₹${course.registrationFee.toFixed(2)}` : 'Free enrollment'}
+                {paymentBreakdown.total ? `Total: ₹${paymentBreakdown.total.toFixed(2)}` : 'Free enrollment'}
               </span>
             </div>
           </div>
         </div>
 
         {/* Action strip */}
-        <div className="p-6 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div id="enrollment" className="p-6 bg-slate-900 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div>
             <p className="text-xs text-slate-400">Enrollment Status:</p>
             <p className="text-sm font-bold text-white capitalize">
@@ -129,18 +158,21 @@ export default function CourseDetailPage() {
             </p>
           </div>
 
+          {paymentBreakdown.total > 0 && !isEnrolled && <div className="text-right text-xs text-slate-400"><p>Course fee: ₹{paymentBreakdown.baseFee.toFixed(2)}</p><p>Payment processing (2%): ₹{paymentBreakdown.processingFee.toFixed(2)}</p><p className="mt-1 font-bold text-emerald-300">You pay: ₹{paymentBreakdown.total.toFixed(2)}</p></div>}
+
           <div className="flex items-center space-x-3 w-full sm:w-auto">
             {!isEnrolled ? (
               <button
                 onClick={async () => {
                   if (!currentUser) {
-                    router.push('/register');
+                    router.push('/login');
                   } else {
                     setEnrolling(true);
                     setEnrollmentError('');
                     try {
                       await enrollWithPayment(course.id, course.registrationFee || 0, { fullName: currentUser.fullName, email: currentUser.email, phone: currentUser.phone });
-                      router.push('/dashboard');
+                      const updatedEnrollments = await supabaseService.fetchEnrollments();
+                      useStore.setState({ enrollments: updatedEnrollments });
                     } catch (error) {
                       setEnrollmentError(error instanceof Error ? error.message : 'Enrollment failed.');
                     } finally {
@@ -182,8 +214,21 @@ export default function CourseDetailPage() {
         </p>
       </div>
 
-      {/* Course Assignments List */}
-      <div className="space-y-4">
+      <section className="rounded-3xl border border-indigo-500/30 bg-slate-900 p-6 shadow-xl sm:p-8">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="flex items-center gap-2 text-lg font-bold text-white"><FileText className="h-5 w-5 text-indigo-300" />Course Curriculum</h3>
+            <p className="mt-1 text-xs text-slate-400">{curriculum ? 'Curriculum file provided by the instructor.' : 'The instructor has not uploaded a curriculum file yet.'}</p>
+          </div>
+          {curriculum?.url ? <a href={curriculum.url} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-indigo-500">Download curriculum</a> : curriculum?.requiresLogin ? <Link href="/login" className="inline-flex items-center justify-center rounded-xl border border-indigo-400/40 px-4 py-2.5 text-xs font-bold text-indigo-200 hover:bg-indigo-500/10">Sign in to download curriculum</Link> : null}
+        </div>
+        {curriculum && <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-4"><p className="text-sm font-semibold text-white">{curriculum.file_name}</p><p className="mt-1 text-xs text-slate-500">{Math.max(1, Math.round(curriculum.file_size / 1024))} KB · {curriculum.mime_type}</p></div>}
+        {!curriculum && !curriculumError && <p className="mt-4 rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-400">No curriculum file is attached to this course yet.</p>}
+        {curriculumError && <p className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-300">{curriculumError}</p>}
+      </section>
+
+      {/* Course Assignments List: available only after enrollment */}
+      {isEnrolled && <div className="space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-xl font-extrabold text-white flex items-center space-x-2">
             <FileText className="w-5 h-5 text-amber-400" />
@@ -253,7 +298,7 @@ export default function CourseDetailPage() {
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Submission Modal */}
       {activeAssignmentForSubmission && (

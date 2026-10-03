@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { supabaseService } from '@/lib/services/supabaseService';
 import { CertificateCard } from '@/components/certificate-card';
+import { BulkStudentImport } from '@/components/bulk-student-import';
 import { Certificate, Payment, UserProfile, UserRole } from '@/lib/types';
 import {
   Shield,
@@ -356,6 +357,8 @@ function AdminDashboardContent() {
               <span>Registered Student Roster ({students.length})</span>
             </h2>
           </div>
+
+          <BulkStudentImport />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {students.map((st) => {

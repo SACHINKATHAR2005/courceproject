@@ -96,6 +96,25 @@ export const supabaseService = {
     return !error;
   },
 
+  deleteCourse: async (courseId: string, instructorId: string): Promise<boolean> => {
+    if (!isSupabaseConfigured() || !supabase) return false;
+    const { data: material } = await supabase
+      .from('course_materials')
+      .select('storage_path')
+      .eq('course_id', courseId)
+      .maybeSingle();
+    if (material?.storage_path) {
+      const { error: storageError } = await supabase.storage.from('course-materials').remove([material.storage_path]);
+      if (storageError) return false;
+    }
+    const { error } = await supabase
+      .from('courses')
+      .delete()
+      .eq('id', courseId)
+      .eq('instructor_id', instructorId);
+    return !error;
+  },
+
   fetchAssignments: async (): Promise<Assignment[]> => {
     if (!isSupabaseConfigured() || !supabase) return [];
     const { data, error } = await supabase.from('assignments').select('*');

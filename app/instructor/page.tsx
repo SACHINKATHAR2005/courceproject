@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useStore } from '@/lib/store/useStore';
 import { GradingModal } from '@/components/grading-modal';
+import { BulkStudentImport } from '@/components/bulk-student-import';
+import { BulkCertificateIssue } from '@/components/bulk-certificate-issue';
+import { CurriculumUpload } from '@/components/curriculum-upload';
 import { Assignment, AssignmentSubmission, Course } from '@/lib/types';
 import {
   LayoutDashboard,
@@ -15,7 +18,9 @@ import {
   UserCheck,
   Clock,
   AwardIcon,
-  ShieldAlert
+  ShieldAlert,
+  Trash2,
+  X
 } from 'lucide-react';
 
 import { AuthAccessGate } from '../../components/auth-access-gate';
@@ -37,6 +42,7 @@ function InstructorPortalContent() {
     certificates,
     addCourse,
     updateCourse,
+    deleteCourse,
     addAssignment,
     updateAssignment,
     issueCertificateForStudent,
@@ -45,7 +51,7 @@ function InstructorPortalContent() {
   } = useStore();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'submissions' | 'courses' | 'assignments' | 'students'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'courses' | 'assignments' | 'students' | 'notes'>('submissions');
   const [gradingSubmission, setGradingSubmission] = useState<AssignmentSubmission | null>(null);
 
   // New Course Form State
@@ -63,10 +69,25 @@ function InstructorPortalContent() {
   const [asgDesc, setAsgDesc] = useState('');
   const [asgMaxScore, setAsgMaxScore] = useState(100);
   const [asgDueDate, setAsgDueDate] = useState('');
+  const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [noteFile, setNoteFile] = useState<File | null>(null);
+  const [noteError, setNoteError] = useState('');
   const [courseError, setCourseError] = useState('');
   const [assignmentError, setAssignmentError] = useState('');
   const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
+  const [courseFormOpen, setCourseFormOpen] = useState(false);
   const [editingAssignmentId, setEditingAssignmentId] = useState<string | null>(null);
+  const [assignmentFormOpen, setAssignmentFormOpen] = useState(false);
+  const [notesFormOpen, setNotesFormOpen] = useState(false);
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
+  const [courseToDelete, setCourseToDelete] = useState<Course | null>(null);
+
+  const showToast = (message: string, tone: 'success' | 'error' = 'success') => {
+    setToast({ message, tone });
+    window.setTimeout(() => setToast(null), 3500);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -133,7 +154,8 @@ function InstructorPortalContent() {
     setNewCourseStartDate('');
     setNewCourseStatus('upcoming');
     setSelectedCourseId(createdCourse.id);
-    alert('New Course Created Successfully!');
+    setCourseFormOpen(false);
+    showToast('New course created successfully.');
   };
 
   const handleCreateAssignment = (e: React.FormEvent) => {
@@ -158,28 +180,44 @@ function InstructorPortalContent() {
       setAsgTitle('');
       setAsgDesc('');
       setAsgDueDate('');
-      alert('Assignment Published Successfully!');
+      const pdf = assignmentFile;
+      setAssignmentFile(null);
+      if (pdf) {
+        const body = new FormData();
+        body.append('file', pdf);
+        fetch(`/api/assignments/${result.assignment.id}/material`, { method: 'POST', body })
+          .then(async (response) => { if (!response.ok) throw new Error((await response.json()).error || 'Assignment PDF upload failed.'); })
+          .then(() => showToast('Assignment published with PDF.'))
+          .catch((error) => showToast(error instanceof Error ? error.message : 'Assignment PDF upload failed.', 'error'));
+      } else {
+        showToast('Assignment published successfully.');
+      }
+      setAssignmentFormOpen(false);
     });
   };
 
   const myAssignments = assignments.filter((assignment) => myCourses.some((course) => course.id === assignment.courseId));
 
   const startEditingAssignment = (assignment: Assignment) => {
+    setAssignmentFormOpen(true);
     setEditingAssignmentId(assignment.id);
     setSelectedCourseId(assignment.courseId);
     setAsgTitle(assignment.title);
     setAsgDesc(assignment.description);
     setAsgMaxScore(assignment.maxScore);
     setAsgDueDate(assignment.dueDate ? assignment.dueDate.slice(0, 10) : '');
+    setAssignmentFile(null);
     setAssignmentError('');
   };
 
   const cancelEditingAssignment = () => {
+    setAssignmentFormOpen(false);
     setEditingAssignmentId(null);
     setAsgTitle('');
     setAsgDesc('');
     setAsgMaxScore(100);
     setAsgDueDate('');
+    setAssignmentFile(null);
   };
 
   const handleSaveAssignment = async (event: React.FormEvent) => {
@@ -200,10 +238,46 @@ function InstructorPortalContent() {
       setAssignmentError(result.error || 'Assignment could not be updated.');
       return;
     }
+    const pdf = assignmentFile;
+    if (pdf) {
+      const body = new FormData();
+      body.append('file', pdf);
+      const response = await fetch(`/api/assignments/${assignment.id}/material`, { method: 'POST', body });
+      if (!response.ok) {
+        const uploadResult = await response.json();
+        setAssignmentError(uploadResult.error || 'Assignment PDF upload failed.');
+        return;
+      }
+    }
     cancelEditingAssignment();
   };
 
+  const handleCreateNote = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!selectedCourseId || !noteTitle.trim() || !noteContent.trim()) {
+      setNoteError('Select a course and complete the note title and content.');
+      return;
+    }
+    setNoteError('');
+    const body = new FormData();
+    body.append('title', noteTitle);
+    body.append('content', noteContent);
+    if (noteFile) body.append('file', noteFile);
+    const response = await fetch(`/api/courses/${selectedCourseId}/notes`, { method: 'POST', body });
+    const result = await response.json();
+    if (!response.ok) {
+      setNoteError(result.error || 'Note could not be saved.');
+      return;
+    }
+    setNoteTitle('');
+    setNoteContent('');
+    setNoteFile(null);
+    setNotesFormOpen(false);
+    showToast('Note shared with enrolled students.');
+  };
+
   const startEditingCourse = (course: Course) => {
+    setCourseFormOpen(true);
     setEditingCourseId(course.id);
     setNewCourseTitle(course.title);
     setNewCourseDesc(course.description);
@@ -216,11 +290,16 @@ function InstructorPortalContent() {
   };
 
   const cancelEditingCourse = () => {
+    setCourseFormOpen(false);
     setEditingCourseId(null);
     setNewCourseTitle('');
     setNewCourseDesc('');
+    setNewCourseCategory('Web Development');
+    setNewCourseDuration('6 Weeks');
     setNewCourseFee('0');
     setNewCourseStartDate('');
+    setNewCourseStatus('upcoming');
+    setCourseError('');
   };
 
   const handleUpdateCourse = async (event: React.FormEvent) => {
@@ -247,7 +326,7 @@ function InstructorPortalContent() {
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-50 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-      <div className="mx-auto max-w-7xl space-y-8">
+      <div className="w-full space-y-8">
 
         {/* Header */}
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
@@ -257,7 +336,7 @@ function InstructorPortalContent() {
                 <LayoutDashboard className="w-8 h-8" />
               </div>
               <div>
-                <div className="flex items-center space-x-2">
+                <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:space-x-2">
                   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-300">Instructor workspace</p>
                   <h1 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Welcome back, {currentUser.fullName}</h1>
                 </div>
@@ -267,7 +346,7 @@ function InstructorPortalContent() {
 
             {/* Action Tabs */}
           </div>
-          <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-white p-3 sm:grid-cols-4 md:min-w-140 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-white p-3 sm:grid-cols-5 md:min-w-140 md:grid-cols-5">
             <button
               onClick={() => setActiveTab('submissions')}
               className={`rounded-xl px-3 py-2.5 text-left text-xs font-bold transition-all ${activeTab === 'submissions'
@@ -303,6 +382,15 @@ function InstructorPortalContent() {
                 }`}
             >
               Enrolled Students ({enrollments.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('notes')}
+              className={`rounded-xl px-3 py-2.5 text-left text-xs font-bold transition-all ${activeTab === 'notes'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+            >
+              Share Notes
             </button>
           </div>
         </div>
@@ -379,8 +467,8 @@ function InstructorPortalContent() {
                           <button
                             onClick={() => {
                               issueCertificateForStudent(sub.studentId, course.id).then((result) => {
-                                if (result.certificate) alert(`Certificate Issued! Outward No: ${result.certificate.outwardNo}`);
-                                else alert(result.error);
+                                if (result.certificate) showToast(`Certificate issued: ${result.certificate.outwardNo}`);
+                                else showToast(result.error || 'Certificate could not be issued.', 'error');
                               });
                             }}
                             className="w-full px-4 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all flex items-center justify-center space-x-1"
@@ -400,13 +488,25 @@ function InstructorPortalContent() {
 
         {/* CREATE COURSE TAB */}
         {activeTab === 'courses' && (
-          <div className="space-y-6">
-            <section className="space-y-4">
+          <div className="space-y-5">
+            <section className="min-w-0 space-y-4">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
                   <BookOpen className="w-5 h-5 text-indigo-400" />
                   <span>Courses Created By You ({myCourses.length})</span>
                 </h2>
+                <button
+                  type="button"
+                  onClick={() => {
+                    cancelEditingCourse();
+                    setCourseFormOpen(true);
+                  }}
+                  aria-label="Add new course"
+                  title="Add new course"
+                  className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500"
+                >
+                  <PlusCircle className="h-5 w-5" />
+                </button>
               </div>
 
               {myCourses.length === 0 ? (
@@ -414,9 +514,9 @@ function InstructorPortalContent() {
                   You have not created a course yet.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid w-full grid-cols-1 gap-5 lg:grid-cols-2 2xl:grid-cols-3">
                   {myCourses.map((course) => (
-                    <article key={course.id} className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+                    <article key={course.id} className="w-full min-w-0 bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[10px] uppercase tracking-wider font-bold text-indigo-300">{course.category}</p>
@@ -425,13 +525,22 @@ function InstructorPortalContent() {
                         <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase text-emerald-300">Published</span>
                       </div>
                       <p className="text-xs leading-relaxed text-slate-400 line-clamp-3">{course.description}</p>
-                      <div className="flex items-center justify-between border-t border-slate-800 pt-3 text-xs text-slate-400">
+                      <CurriculumUpload courseId={course.id} />
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-800 pt-3 text-xs text-slate-400">
                         <span>{course.duration}</span>
                         <span>{course.registrationFee ? `₹${course.registrationFee.toFixed(2)}` : 'Free'}</span>
                         <span>{course.startDate ? new Date(`${course.startDate}T00:00:00`).toLocaleDateString() : 'Date TBD'}</span>
                         <span className="capitalize">{course.status || 'upcoming'}</span>
-                        <div className="flex items-center gap-3">
+                        <div className="ml-auto flex flex-wrap items-center gap-3">
                           <button type="button" onClick={() => startEditingCourse(course)} className="font-bold text-amber-300 hover:text-white">Edit</button>
+                          <button
+                            type="button"
+                            onClick={() => setCourseToDelete(course)}
+                            className="inline-flex items-center gap-1 font-bold text-red-300 hover:text-red-200"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete
+                          </button>
                           <Link href={`/courses/${course.id}`} className="font-bold text-indigo-300 hover:text-white">View course</Link>
                         </div>
                       </div>
@@ -441,116 +550,122 @@ function InstructorPortalContent() {
               )}
             </section>
 
-            <section className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 max-w-2xl mx-auto shadow-2xl space-y-6">
-              <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                <PlusCircle className="w-5 h-5 text-indigo-400" />
-                <span>{editingCourseId ? 'Edit Published Course' : 'Create New Course'}</span>
-              </h2>
-
-              <form onSubmit={editingCourseId ? handleUpdateCourse : handleCreateCourse} className="space-y-4">
-                {courseError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{courseError}</p>}
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Course Title *</label>
-                  <input
-                    type="text"
-                    value={newCourseTitle}
-                    onChange={(e) => setNewCourseTitle(e.target.value)}
-                    placeholder="e.g. Advanced TypeScript & Clean Code Architecture"
-                    required
-                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                  />
+            {courseFormOpen && <div onClick={(event) => { if (event.target === event.currentTarget) cancelEditingCourse(); }} className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm">
+              <section className="my-8 w-full max-w-2xl space-y-6 rounded-3xl border border-indigo-500/30 bg-slate-900 p-6 shadow-2xl sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="flex items-center space-x-2 text-xl font-bold text-white">
+                    <PlusCircle className="h-5 w-5 text-indigo-400" />
+                    <span>{editingCourseId ? 'Edit Published Course' : 'Create New Course'}</span>
+                  </h2>
+                  <button type="button" onClick={cancelEditingCourse} aria-label="Close course form" className="rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-800 hover:text-white">
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
 
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Description *</label>
-                  <textarea
-                    value={newCourseDesc}
-                    onChange={(e) => setNewCourseDesc(e.target.value)}
-                    rows={3}
-                    placeholder="Brief course overview and curriculum topics..."
-                    required
-                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                  />
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
+                <form onSubmit={editingCourseId ? handleUpdateCourse : handleCreateCourse} className="space-y-4">
+                  {courseError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{courseError}</p>}
                   <div>
-                    <label className="text-xs font-bold uppercase text-slate-300">Category</label>
-                    <select
-                      value={newCourseCategory}
-                      onChange={(e) => setNewCourseCategory(e.target.value)}
+                    <label className="text-xs font-bold uppercase text-slate-300">Course Title *</label>
+                    <input
+                      type="text"
+                      value={newCourseTitle}
+                      onChange={(e) => setNewCourseTitle(e.target.value)}
+                      placeholder="e.g. Advanced TypeScript & Clean Code Architecture"
+                      required
                       className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Description *</label>
+                    <textarea
+                      value={newCourseDesc}
+                      onChange={(e) => setNewCourseDesc(e.target.value)}
+                      rows={3}
+                      placeholder="Brief course overview and curriculum topics..."
+                      required
+                      className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-xs font-bold uppercase text-slate-300">Category *</label>
+                      <input
+                        type="text"
+                        value={newCourseCategory}
+                        onChange={(e) => setNewCourseCategory(e.target.value)}
+                        placeholder="e.g. Data Science"
+                        required
+                        className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase text-slate-300">Duration</label>
+                      <input
+                        type="text"
+                        value={newCourseDuration}
+                        onChange={(e) => setNewCourseDuration(e.target.value)}
+                        placeholder="e.g. 6 Weeks"
+                        className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-bold uppercase text-slate-300">Registration Fee</label>
+                      <div className="relative mt-1">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newCourseFee}
+                          onChange={(e) => setNewCourseFee(e.target.value)}
+                          placeholder="0 for free"
+                          className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 pl-8 text-sm text-white focus:outline-none focus:border-indigo-400"
+                        />
+                      </div>
+                      <p className="mt-1 text-[11px] text-slate-500">Enter 0 to offer this course for free.</p>
+                    </div>
+
+                    <div>
+                      <label className="text-xs font-bold uppercase text-slate-300">Course Start Date *</label>
+                      <input
+                        type="date"
+                        required
+                        value={newCourseStartDate}
+                        onChange={(e) => setNewCourseStartDate(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Course Status</label>
+                    <select
+                      value={newCourseStatus}
+                      onChange={(e) => setNewCourseStatus(e.target.value as 'upcoming' | 'ongoing' | 'completed')}
+                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
                     >
-                      <option value="Web Development">Web Development</option>
-                      <option value="Backend & Cloud">Backend & Cloud</option>
-                      <option value="UI/UX Design">UI/UX Design</option>
+                      <option value="upcoming">Upcoming</option>
+                      <option value="ongoing">Ongoing</option>
+                      <option value="completed">Completed</option>
                     </select>
                   </div>
 
-                  <div>
-                    <label className="text-xs font-bold uppercase text-slate-300">Duration</label>
-                    <input
-                      type="text"
-                      value={newCourseDuration}
-                      onChange={(e) => setNewCourseDuration(e.target.value)}
-                      placeholder="e.g. 6 Weeks"
-                      className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="text-xs font-bold uppercase text-slate-300">Registration Fee</label>
-                    <div className="relative mt-1">
-                      <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">₹</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={newCourseFee}
-                        onChange={(e) => setNewCourseFee(e.target.value)}
-                        placeholder="0 for free"
-                        className="w-full rounded-xl border border-slate-800 bg-slate-950 p-3 pl-8 text-sm text-white focus:outline-none focus:border-indigo-400"
-                      />
-                    </div>
-                    <p className="mt-1 text-[11px] text-slate-500">Enter 0 to offer this course for free.</p>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-bold uppercase text-slate-300">Course Start Date *</label>
-                    <input
-                      type="date"
-                      required
-                      value={newCourseStartDate}
-                      onChange={(e) => setNewCourseStartDate(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Course Status</label>
-                  <select
-                    value={newCourseStatus}
-                    onChange={(e) => setNewCourseStatus(e.target.value as 'upcoming' | 'ongoing' | 'completed')}
-                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                  <button
+                    type="submit"
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all"
                   >
-                    <option value="upcoming">Upcoming</option>
-                    <option value="ongoing">Ongoing</option>
-                    <option value="completed">Completed</option>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all"
-                >
-                  {editingCourseId ? 'Save Course Changes' : 'Publish Course'}
-                </button>
-                {editingCourseId && <button type="button" onClick={cancelEditingCourse} className="w-full rounded-xl border border-slate-700 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800">Cancel Editing</button>}
-              </form>
-            </section>
+                    {editingCourseId ? 'Save Course Changes' : 'Publish Course'}
+                  </button>
+                  {editingCourseId && <button type="button" onClick={cancelEditingCourse} className="w-full rounded-xl border border-slate-700 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800">Cancel Editing</button>}
+                </form>
+              </section>
+            </div>}
           </div>
         )}
 
@@ -563,6 +678,9 @@ function InstructorPortalContent() {
                   <FileText className="w-5 h-5 text-indigo-400" />
                   <span>My Assignments ({myAssignments.length})</span>
                 </h2>
+                <button type="button" onClick={() => { cancelEditingAssignment(); setAssignmentFormOpen(true); }} aria-label="Add assignment" title="Add assignment" className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500">
+                  <PlusCircle className="h-5 w-5" />
+                </button>
               </div>
               {myAssignments.length === 0 ? (
                 <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-sm text-slate-400">
@@ -598,85 +716,151 @@ function InstructorPortalContent() {
               )}
             </section>
 
-            <section className="mx-auto max-w-2xl space-y-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-8">
-              <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-                <FileText className="w-5 h-5 text-indigo-400" />
-                <span>{editingAssignmentId ? 'Edit Assignment' : 'Post Course Assignment'}</span>
-              </h2>
+            {assignmentFormOpen && <div onClick={(event) => { if (event.target === event.currentTarget) cancelEditingAssignment(); }} className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm">
+              <section className="my-8 w-full max-w-2xl space-y-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-8">
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className="text-xl font-bold text-white flex items-center space-x-2">
+                    <FileText className="w-5 h-5 text-indigo-400" />
+                    <span>{editingAssignmentId ? 'Edit Assignment' : 'Post Course Assignment'}</span>
+                  </h2>
+                  <button type="button" onClick={cancelEditingAssignment} aria-label="Close assignment form" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-5 w-5" /></button>
+                </div>
 
-              <form onSubmit={editingAssignmentId ? handleSaveAssignment : handleCreateAssignment} className="space-y-4">
-                {assignmentError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{assignmentError}</p>}
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Select Target Course *</label>
-                  <select
-                    value={selectedCourseId}
-                    onChange={(e) => setSelectedCourseId(e.target.value)}
+                <form onSubmit={editingAssignmentId ? handleSaveAssignment : handleCreateAssignment} className="space-y-4">
+                  {assignmentError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{assignmentError}</p>}
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Select Target Course *</label>
+                    <select
+                      value={selectedCourseId}
+                      onChange={(e) => setSelectedCourseId(e.target.value)}
+                      disabled={myCourses.length === 0}
+                      className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    >
+                      {myCourses.length === 0 ? (
+                        <option value="">Create a course first</option>
+                      ) : myCourses.map((c) => (
+                        <option key={c.id} value={c.id}>{c.title}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Assignment Title *</label>
+                    <input
+                      type="text"
+                      value={asgTitle}
+                      onChange={(e) => setAsgTitle(e.target.value)}
+                      placeholder="e.g. Implement Supabase Realtime Subscriptions"
+                      required
+                      className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Assignment Instructions *</label>
+                    <textarea
+                      value={asgDesc}
+                      onChange={(e) => setAsgDesc(e.target.value)}
+                      rows={3}
+                      placeholder="Detailed instructions for student project submission..."
+                      required
+                      className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Max Score (Points)</label>
+                    <input
+                      type="number"
+                      value={asgMaxScore}
+                      onChange={(e) => setAsgMaxScore(Number(e.target.value))}
+                      className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Assignment Deadline *</label>
+                    <input
+                      type="date"
+                      required
+                      value={asgDueDate}
+                      onChange={(e) => setAsgDueDate(e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Assignment PDF (Optional)</label>
+                    <input
+                      type="file"
+                      accept="application/pdf,.pdf"
+                      onChange={(event) => setAssignmentFile(event.target.files?.[0] || null)}
+                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-2 file:text-xs file:font-bold file:text-indigo-200"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">PDF only, maximum 20 MB. Enrolled students can access it with this assignment.</p>
+                  </div>
+
+                  <button
+                    type="submit"
                     disabled={myCourses.length === 0}
-                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all"
                   >
-                    {myCourses.length === 0 ? (
-                      <option value="">Create a course first</option>
-                    ) : myCourses.map((c) => (
-                      <option key={c.id} value={c.id}>{c.title}</option>
-                    ))}
-                  </select>
-                </div>
+                    {editingAssignmentId ? 'Save Assignment Changes' : 'Post Assignment'}
+                  </button>
+                  {editingAssignmentId && <button type="button" onClick={cancelEditingAssignment} className="w-full rounded-xl border border-slate-700 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800">Cancel Editing</button>}
+                </form>
+              </section>
+            </div>}
+          </div>
+        )}
 
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Assignment Title *</label>
-                  <input
-                    type="text"
-                    value={asgTitle}
-                    onChange={(e) => setAsgTitle(e.target.value)}
-                    placeholder="e.g. Implement Supabase Realtime Subscriptions"
-                    required
-                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                  />
+        {/* COURSE NOTES TAB */}
+        {activeTab === 'notes' && (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="flex items-center gap-2 text-xl font-extrabold text-white"><BookOpen className="h-5 w-5 text-indigo-400" />Course Notes</h2>
+                <p className="mt-1 text-xs text-slate-400">Share notes privately with enrolled students.</p>
+              </div>
+              <button type="button" onClick={() => { setNoteError(''); setNotesFormOpen(true); }} aria-label="Add course note" title="Add course note" className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 transition-colors hover:bg-indigo-500">
+                <PlusCircle className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="rounded-2xl border border-slate-800 bg-slate-900 p-8 text-center text-sm text-slate-400">No notes shared yet. Use the plus button to add course notes.</div>
+            {notesFormOpen && <div onClick={(event) => { if (event.target === event.currentTarget) setNotesFormOpen(false); }} className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-950/70 p-4 backdrop-blur-sm">
+              <section className="my-8 w-full max-w-2xl space-y-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-2xl sm:p-8">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="flex items-center gap-2 text-xl font-bold text-white"><BookOpen className="h-5 w-5 text-indigo-400" />Share Course Notes</h2>
+                    <p className="mt-2 text-xs leading-relaxed text-slate-400">Notes are visible only to students enrolled in the selected course.</p>
+                  </div>
+                  <button type="button" onClick={() => setNotesFormOpen(false)} aria-label="Close notes form" className="rounded-lg p-2 text-slate-400 hover:bg-slate-800 hover:text-white"><X className="h-5 w-5" /></button>
                 </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Assignment Instructions *</label>
-                  <textarea
-                    value={asgDesc}
-                    onChange={(e) => setAsgDesc(e.target.value)}
-                    rows={3}
-                    placeholder="Detailed instructions for student project submission..."
-                    required
-                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Max Score (Points)</label>
-                  <input
-                    type="number"
-                    value={asgMaxScore}
-                    onChange={(e) => setAsgMaxScore(Number(e.target.value))}
-                    className="mt-1 w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold uppercase text-slate-300">Assignment Deadline *</label>
-                  <input
-                    type="date"
-                    required
-                    value={asgDueDate}
-                    onChange={(e) => setAsgDueDate(e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={myCourses.length === 0}
-                  className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm shadow-lg shadow-indigo-600/20 transition-all"
-                >
-                  {editingAssignmentId ? 'Save Assignment Changes' : 'Post Assignment'}
-                </button>
-                {editingAssignmentId && <button type="button" onClick={cancelEditingAssignment} className="w-full rounded-xl border border-slate-700 py-3 text-sm font-bold text-slate-300 hover:bg-slate-800">Cancel Editing</button>}
-              </form>
-            </section>
+                <form onSubmit={handleCreateNote} className="space-y-4">
+                  {noteError && <p className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{noteError}</p>}
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Course *</label>
+                    <select value={selectedCourseId} onChange={(event) => setSelectedCourseId(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400">
+                      {myCourses.length === 0 ? <option value="">Create a course first</option> : myCourses.map((course) => <option key={course.id} value={course.id}>{course.title}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Note Title *</label>
+                    <input type="text" required value={noteTitle} onChange={(event) => setNoteTitle(event.target.value)} placeholder="e.g. Week 1 revision notes" className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Notes *</label>
+                    <textarea required rows={8} value={noteContent} onChange={(event) => setNoteContent(event.target.value)} placeholder="Write the notes students should read..." className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">Note PDF (Optional)</label>
+                    <input type="file" accept="application/pdf,.pdf" onChange={(event) => setNoteFile(event.target.files?.[0] || null)} className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-2 file:text-xs file:font-bold file:text-indigo-200" />
+                    <p className="mt-1 text-[11px] text-slate-500">PDF only, maximum 20 MB. Enrolled students can download it from Notes.</p>
+                  </div>
+                  <button type="submit" disabled={myCourses.length === 0} className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/20 transition-all hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-50">Share Notes</button>
+                </form>
+              </section>
+            </div>}
           </div>
         )}
 
@@ -689,6 +873,13 @@ function InstructorPortalContent() {
                 <span>Enrolled Students Across Courses ({enrollments.length})</span>
               </h2>
             </div>
+
+            <BulkStudentImport />
+
+            <BulkCertificateIssue
+              courses={myCourses}
+              onComplete={() => { void useStore.getState().hydrateFromSupabase(); }}
+            />
 
             <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl">
               <div className="overflow-x-auto">
@@ -708,7 +899,8 @@ function InstructorPortalContent() {
                       const course = courses.find((c) => c.id === enr.courseId);
                       const courseAssignments = assignments.filter((assignment) => assignment.courseId === enr.courseId);
                       const studentCompletedAll = courseAssignments.length > 0 && courseAssignments.every((assignment) => submissions.some((submission) => submission.assignmentId === assignment.id && submission.studentId === enr.studentId));
-                      const alreadyCertified = certificates.some((certificate) => certificate.courseId === enr.courseId && certificate.studentId === enr.studentId);
+                      const issuedCertificate = certificates.find((certificate) => certificate.courseId === enr.courseId && certificate.studentId === enr.studentId);
+                      const alreadyCertified = Boolean(issuedCertificate);
 
                       return (
                         <tr key={enr.id} className="hover:bg-slate-800/40 transition-colors">
@@ -732,8 +924,8 @@ function InstructorPortalContent() {
                           <td className="p-4 text-right">
                             <button
                               onClick={() => issueCertificateForStudent(enr.studentId, enr.courseId).then((result) => {
-                                if (result.certificate) alert(`Certificate Issued to ${student?.fullName}! Outward No: ${result.certificate.outwardNo}`);
-                                else alert(result.error);
+                                if (result.certificate) showToast(`Certificate issued to ${student?.fullName || 'student'}.`);
+                                else showToast(result.error || 'Certificate could not be issued.', 'error');
                               })}
                               disabled={!course || course.status !== 'completed' || !studentCompletedAll || alreadyCertified}
                               className="px-3 py-1.5 rounded-xl bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold text-xs transition-all inline-flex items-center space-x-1 disabled:cursor-not-allowed disabled:opacity-40"
@@ -741,12 +933,54 @@ function InstructorPortalContent() {
                               <Award className="w-3.5 h-3.5" />
                               <span>{alreadyCertified ? 'Issued' : 'Issue Certificate'}</span>
                             </button>
+                            {issuedCertificate && (
+                              <Link href={`/verify/${issuedCertificate.outwardNo}`} target="_blank" className="ml-2 inline-flex items-center rounded-xl border border-emerald-500/30 px-3 py-1.5 text-xs font-bold text-emerald-300 hover:bg-emerald-500/10">
+                                View / Download
+                              </Link>
+                            )}
                           </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {toast && (
+          <div className={`fixed bottom-6 right-6 z-50 flex max-w-sm items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-2xl ${toast.tone === 'success' ? 'border-emerald-500/40 bg-emerald-950 text-emerald-100' : 'border-red-500/40 bg-red-950 text-red-100'}`}>
+            <span className="flex-1">{toast.message}</span>
+            <button type="button" onClick={() => setToast(null)} aria-label="Dismiss notification" className="text-current/70 hover:text-current"><X className="h-4 w-4" /></button>
+          </div>
+        )}
+
+        {courseToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+            <div role="dialog" aria-modal="true" aria-labelledby="delete-course-title" className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 id="delete-course-title" className="text-lg font-bold text-white">Delete course?</h2>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-400">“{courseToDelete.title}” and its enrollments, assignments, and certificates will be removed.</p>
+                </div>
+                <button type="button" onClick={() => setCourseToDelete(null)} aria-label="Close confirmation" className="text-slate-400 hover:text-white"><X className="h-5 w-5" /></button>
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                <button type="button" onClick={() => setCourseToDelete(null)} className="rounded-lg border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-300 hover:bg-slate-800">Cancel</button>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (!currentUser) return;
+                    const deleted = await deleteCourse(courseToDelete.id, currentUser.id);
+                    setCourseToDelete(null);
+                    if (deleted) showToast('Course deleted successfully.');
+                    else showToast('The course could not be deleted. Please try again.', 'error');
+                  }}
+                  className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
+                >
+                  Delete course
+                </button>
               </div>
             </div>
           </div>

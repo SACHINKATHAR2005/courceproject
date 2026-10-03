@@ -4,6 +4,8 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
+const PAYMENT_PROCESSING_RATE = 0.02;
+
 export async function POST(request: Request) {
     try {
         const body = await request.json() as { courseId?: string };
@@ -25,8 +27,10 @@ export async function POST(request: Request) {
 
         const { data: course } = await admin.from('courses').select('id, title, registration_fee').eq('id', courseId).maybeSingle();
         if (!course) return NextResponse.json({ error: 'Course not found.' }, { status: 404 });
-        const amountPaise = Math.round(Number(course.registration_fee || 0) * 100);
-        if (amountPaise <= 0) return NextResponse.json({ error: 'This course is free.', free: true }, { status: 400 });
+        const baseAmountPaise = Math.round(Number(course.registration_fee || 0) * 100);
+        if (baseAmountPaise <= 0) return NextResponse.json({ error: 'This course is free.', free: true }, { status: 400 });
+        const processingFeePaise = Math.round(baseAmountPaise * PAYMENT_PROCESSING_RATE);
+        const amountPaise = baseAmountPaise + processingFeePaise;
 
         const razorpayKey = process.env.RAZORPAY_KEY_ID;
         const razorpaySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -44,7 +48,7 @@ export async function POST(request: Request) {
             amount: amountPaise,
             currency: 'INR',
             receipt,
-            notes: { course_id: courseId, student_id: user.id },
+            notes: { course_id: courseId, student_id: user.id, base_amount_paise: String(baseAmountPaise), processing_fee_paise: String(processingFeePaise) },
         });
 
         const { error: paymentError } = await admin.from('payments').insert({
@@ -63,7 +67,7 @@ export async function POST(request: Request) {
             }, { status: 500 });
         }
 
-        return NextResponse.json({ orderId: order.id, amount: amountPaise, currency: 'INR', keyId: razorpayKey, courseTitle: course.title });
+        return NextResponse.json({ orderId: order.id, amount: amountPaise, baseAmount: baseAmountPaise, processingFee: processingFeePaise, currency: 'INR', keyId: razorpayKey, courseTitle: course.title });
     } catch (error) {
         console.error('Razorpay order creation failed:', error);
         return NextResponse.json({ error: 'Unable to start payment.' }, { status: 500 });

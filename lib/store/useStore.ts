@@ -15,7 +15,7 @@ interface StoreState {
   courses: Course[];
   addCourse: (newCourse: Omit<Course, 'id' | 'createdAt'>) => Promise<Course | null>;
   updateCourse: (course: Course) => Promise<boolean>;
-  deleteCourse: (courseId: string) => void;
+  deleteCourse: (courseId: string, instructorId: string) => Promise<boolean>;
 
   // Enrollment state
   enrollments: Enrollment[];
@@ -113,10 +113,13 @@ export const useStore = create<StoreState>()(
         set((state) => ({ courses: state.courses.map((item) => item.id === course.id ? course : item) }));
         return true;
       },
-      deleteCourse: (courseId) => {
+      deleteCourse: async (courseId, instructorId) => {
+        const deleted = await supabaseService.deleteCourse(courseId, instructorId);
+        if (!deleted) return false;
         set((state) => ({
           courses: state.courses.filter((c) => c.id !== courseId),
         }));
+        return true;
       },
 
       // Enrollments — starts empty
@@ -247,12 +250,11 @@ export const useStore = create<StoreState>()(
       // Certificates — starts empty
       certificates: [],
       issueCertificate: (studentId, studentName, courseId, courseName, instructorName) => {
-        const year = new Date().getFullYear();
-        const randomNum = Math.floor(100000 + Math.random() * 900000);
-        const outwardNo = `CERT-${year}-${randomNum}`;
+        const year = new Date().getUTCFullYear();
+        const outwardNo = `CERT-${year}-${crypto.randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`;
 
         const newCert: Certificate = {
-          id: `cert-${randomNum}`,
+          id: crypto.randomUUID(),
           outwardNo,
           studentId,
           courseId,
