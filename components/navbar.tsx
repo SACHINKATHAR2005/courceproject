@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/lib/store/useStore';
@@ -12,13 +12,186 @@ import {
   ShieldCheck,
   LogOut,
   Menu,
-  X
+  X,
+  CheckCheck,
+  FileText,
+  GraduationCap,
+  RefreshCw,
+  StickyNote,
+  BadgeCheck,
+  AlertCircle,
 } from 'lucide-react';
+import { AppNotification } from '@/lib/types';
 
+// ─── Relative time helper ────────────────────────────────────────────────────
+function relativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+// ─── Notification type → icon ─────────────────────────────────────────────
+function NotifIcon({ type }: { type: AppNotification['type'] }) {
+  const cls = 'w-4 h-4 flex-shrink-0 mt-0.5';
+  switch (type) {
+    case 'assignment_posted':
+      return <ClipboardList className={`${cls} text-blue-500`} />;
+    case 'assignment_submitted':
+      return <FileText className={`${cls} text-indigo-500`} />;
+    case 'assignment_graded':
+      return <GraduationCap className={`${cls} text-emerald-500`} />;
+    case 'resubmit_required':
+      return <RefreshCw className={`${cls} text-amber-500`} />;
+    case 'note_added':
+      return <StickyNote className={`${cls} text-violet-500`} />;
+    case 'certificate_issued':
+      return <BadgeCheck className={`${cls} text-yellow-500`} />;
+    default:
+      return <AlertCircle className={`${cls} text-slate-400`} />;
+  }
+}
+
+// ─── Notification Popover ────────────────────────────────────────────────────
+function NotificationPopover({
+  currentUserId,
+  onClose,
+}: {
+  currentUserId: string;
+  onClose: () => void;
+}) {
+  const { notifications, markNotificationAsRead, markAllNotificationsAsRead } =
+    useStore();
+  const router = useRouter();
+
+  const userNotifs = notifications
+    .filter((n) => n.userId === currentUserId)
+    .slice(0, 30); // cap at 30
+
+  const unreadCount = userNotifs.filter((n) => !n.read).length;
+
+  function handleClick(notif: AppNotification) {
+    markNotificationAsRead(notif.id);
+    onClose();
+    if (notif.link) router.push(notif.link);
+  }
+
+  return (
+    <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-xl border border-[#E2E8F0] bg-white shadow-xl z-[999] overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[#F1F5F9]">
+        <div className="flex items-center gap-2">
+          <Bell className="w-4 h-4 text-[#1E3A5F]" />
+          <span className="font-semibold text-sm text-[#0F172A]">
+            Notifications
+          </span>
+          {unreadCount > 0 && (
+            <span className="text-[10px] font-bold bg-red-500 text-white rounded-full px-1.5 py-0.5 leading-none">
+              {unreadCount}
+            </span>
+          )}
+        </div>
+        {unreadCount > 0 && (
+          <button
+            onClick={() => markAllNotificationsAsRead(currentUserId)}
+            className="flex items-center gap-1 text-[11px] font-medium text-[#1E3A5F] hover:text-[#162F4D] transition-colors"
+            title="Mark all as read"
+          >
+            <CheckCheck className="w-3.5 h-3.5" />
+            Mark all read
+          </button>
+        )}
+      </div>
+
+      {/* Notification list */}
+      <div className="max-h-[400px] overflow-y-auto divide-y divide-[#F1F5F9]">
+        {userNotifs.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center px-4">
+            <Bell className="w-8 h-8 text-[#CBD5E1] mb-2" />
+            <p className="text-sm font-medium text-[#94A3B8]">
+              No notifications yet
+            </p>
+            <p className="text-xs text-[#CBD5E1] mt-1">
+              You&apos;ll see updates here when there&apos;s activity.
+            </p>
+          </div>
+        ) : (
+          userNotifs.map((notif) => (
+            <button
+              key={notif.id}
+              onClick={() => handleClick(notif)}
+              className={`w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-[#F8FAFC] transition-colors ${
+                !notif.read ? 'bg-blue-50/60' : ''
+              }`}
+            >
+              <NotifIcon type={notif.type} />
+              <div className="flex-1 min-w-0">
+                <p
+                  className={`text-[13px] leading-snug ${
+                    !notif.read
+                      ? 'font-semibold text-[#0F172A]'
+                      : 'font-medium text-[#334155]'
+                  }`}
+                >
+                  {notif.title}
+                </p>
+                <p className="text-[12px] text-[#64748B] mt-0.5 line-clamp-2">
+                  {notif.message}
+                </p>
+                <p className="text-[10px] text-[#94A3B8] mt-1">
+                  {relativeTime(notif.createdAt)}
+                </p>
+              </div>
+              {!notif.read && (
+                <span className="flex-shrink-0 mt-1.5 w-2 h-2 rounded-full bg-blue-500" />
+              )}
+            </button>
+          ))
+        )}
+      </div>
+
+      {userNotifs.length > 0 && (
+        <div className="px-4 py-2.5 border-t border-[#F1F5F9] bg-[#F8FAFC]">
+          <p className="text-[11px] text-[#94A3B8] text-center">
+            Showing last {userNotifs.length} notification
+            {userNotifs.length !== 1 ? 's' : ''}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main Navbar ─────────────────────────────────────────────────────────────
 export const Navbar: React.FC = () => {
   const router = useRouter();
-  const { currentUser, logoutUser } = useStore();
+  const { currentUser, logoutUser, notifications, markAllNotificationsAsRead } =
+    useStore();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const notifRef = useRef<HTMLDivElement>(null);
+
+  // Unread count for the current user
+  const unreadCount = currentUser
+    ? notifications.filter((n) => n.userId === currentUser.id && !n.read).length
+    : 0;
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    function handleOutsideClick(e: MouseEvent) {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        setShowNotifications(false);
+      }
+    }
+    if (showNotifications) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, [showNotifications]);
 
   const handleLogout = async () => {
     await supabase?.auth.signOut();
@@ -53,12 +226,7 @@ export const Navbar: React.FC = () => {
             <Link href="/#about" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569] hover:bg-[#F8FAFC]">About</Link>
           </>}
           {currentUser?.role === 'student' && <>
-            <Link
-              href="/dashboard"
-              className="px-3.5 py-2 rounded-lg text-sm font-semibold text-[#15803D]"
-            >
-              <span>Dashboard</span>
-            </Link>
+            <Link href="/dashboard" className="px-3.5 py-2 rounded-lg text-sm font-semibold text-[#15803D]"><span>Dashboard</span></Link>
             <Link href="/dashboard/courses" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569]">My Courses</Link>
             <Link href="/dashboard/assignments" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569] flex items-center gap-1.5"><ClipboardList className="h-3.5 w-3.5" />Assignments</Link>
             <Link href="/dashboard/certificates" className="px-3.5 py-2 rounded-lg text-sm font-medium text-[#475569] flex items-center gap-1.5"><Award className="h-3.5 w-3.5" />Certificates</Link>
@@ -72,9 +240,31 @@ export const Navbar: React.FC = () => {
         <div className="hidden md:flex items-center space-x-3">
           {currentUser ? (
             <div className="flex items-center space-x-3">
-              <button type="button" title="Notifications" aria-label="Notifications" className="relative rounded-lg border border-[#E2E8F0] bg-white p-2 text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#18375f]">
-                <Bell className="h-4 w-4" />
-              </button>
+              {/* ── Notification Bell ── */}
+              <div className="relative" ref={notifRef}>
+                <button
+                  type="button"
+                  title="Notifications"
+                  aria-label="Notifications"
+                  onClick={() => setShowNotifications((prev) => !prev)}
+                  className="relative rounded-lg border border-[#E2E8F0] bg-white p-2 text-[#64748B] transition-colors hover:bg-[#F8FAFC] hover:text-[#18375f]"
+                >
+                  <Bell className="h-4 w-4" />
+                  {unreadCount > 0 && (
+                    <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
+                      {unreadCount > 9 ? '9+' : unreadCount}
+                    </span>
+                  )}
+                </button>
+
+                {showNotifications && (
+                  <NotificationPopover
+                    currentUserId={currentUser.id}
+                    onClose={() => setShowNotifications(false)}
+                  />
+                )}
+              </div>
+
               {/* Profile Pill */}
               <div className="flex items-center space-x-2 px-3 py-1.5 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] text-xs text-[#0F172A]">
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-emerald-100 text-[11px] font-bold text-emerald-800">{currentUser.fullName.charAt(0).toUpperCase()}</span>
@@ -98,13 +288,37 @@ export const Navbar: React.FC = () => {
               >
                 Sign In
               </Link>
-
             </div>
           )}
         </div>
 
         {/* Mobile menu toggle */}
         <div className="md:hidden flex items-center space-x-2">
+          {/* Mobile notification bell */}
+          {currentUser && (
+            <div className="relative" ref={notifRef}>
+              <button
+                type="button"
+                title="Notifications"
+                aria-label="Notifications"
+                onClick={() => setShowNotifications((prev) => !prev)}
+                className="relative rounded-lg border border-[#E2E8F0] bg-white p-2 text-[#64748B]"
+              >
+                <Bell className="h-4 w-4" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white leading-none">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              {showNotifications && (
+                <NotificationPopover
+                  currentUserId={currentUser.id}
+                  onClose={() => setShowNotifications(false)}
+                />
+              )}
+            </div>
+          )}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             className="p-2 text-[#475569] hover:text-[#0F172A]"

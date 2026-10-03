@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { UserProfile, Course, Enrollment, Assignment, AssignmentSubmission, Certificate, UserRole, RegistrationCard } from '../types';
+import { UserProfile, Course, Enrollment, Assignment, AssignmentSubmission, Certificate, UserRole, RegistrationCard, AppNotification } from '../types';
 import { supabaseService } from '../services/supabaseService';
 
 interface StoreState {
@@ -10,6 +10,13 @@ interface StoreState {
   setUser: (user: UserProfile | null) => void;
   logoutUser: () => void;
   updateUserRole: (userId: string, newRole: UserRole) => Promise<boolean>;
+
+  // Notifications state
+  notifications: AppNotification[];
+  addNotification: (notif: Omit<AppNotification, 'id' | 'createdAt' | 'read'>) => void;
+  markNotificationAsRead: (id: string) => void;
+  markAllNotificationsAsRead: (userId: string) => void;
+  clearNotifications: (userId: string) => void;
 
   // Course state
   courses: Course[];
@@ -30,7 +37,7 @@ interface StoreState {
   // Submission state
   submissions: AssignmentSubmission[];
   submitAssignment: (submission: Omit<AssignmentSubmission, 'id' | 'submittedAt' | 'status'>) => Promise<{ ok: boolean; error?: string }>;
-  gradeSubmission: (submissionId: string, grade: number, feedback: string) => Promise<{ ok: boolean; error?: string }>;
+  gradeSubmission: (submissionId: string, grade: number | undefined, feedback: string, status?: 'graded' | 'resubmit_required') => Promise<{ ok: boolean; error?: string }>;
 
   // Certificate state
   certificates: Certificate[];
@@ -94,6 +101,39 @@ export const useStore = create<StoreState>()(
         return true;
       },
 
+      // Notifications state
+      notifications: [],
+      addNotification: (notif) => {
+        const newNotif: AppNotification = {
+          ...notif,
+          id: `notif-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          read: false,
+          createdAt: new Date().toISOString(),
+        };
+        set((state) => ({
+          notifications: [newNotif, ...state.notifications],
+        }));
+      },
+      markNotificationAsRead: (id) => {
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.id === id ? { ...n, read: true } : n
+          ),
+        }));
+      },
+      markAllNotificationsAsRead: (userId) => {
+        set((state) => ({
+          notifications: state.notifications.map((n) =>
+            n.userId === userId ? { ...n, read: true } : n
+          ),
+        }));
+      },
+      clearNotifications: (userId) => {
+        set((state) => ({
+          notifications: state.notifications.filter((n) => n.userId !== userId),
+        }));
+      },
+
       // Courses — starts empty, hydrated from Supabase
       courses: [],
       addCourse: async (newCourseData) => {
@@ -102,7 +142,7 @@ export const useStore = create<StoreState>()(
           id: crypto.randomUUID(),
           createdAt: new Date().toISOString(),
           enrolledCount: 0,
-          totalAssignments: 0,
+          totalAssignments: newCourseData.totalAssignments || 0,
         };
 
         const saved = await supabaseService.insertCourse(newCourse);
@@ -266,22 +306,23 @@ export const useStore = create<StoreState>()(
         return { ok: true };
       },
 
-      gradeSubmission: async (submissionId, grade, feedback) => {
+      gradeSubmission: async (submissionId, grade, feedback, status = 'graded') => {
+        const prev = get().submissions.find((s) => s.id === submissionId);
         // Optimistic update
         set((state) => ({
           submissions: state.submissions.map((s) =>
             s.id === submissionId
-              ? { ...s, grade, feedback, status: 'graded' }
+              ? { ...s, grade, feedback, status }
               : s
           ),
         }));
-        const saved = await supabaseService.updateSubmissionGrade(submissionId, grade, feedback);
+        const saved = await supabaseService.updateSubmissionGrade(submissionId, grade, feedback, status);
         if (!saved) {
           // Revert: restore previous values
           set((state) => ({
             submissions: state.submissions.map((s) =>
               s.id === submissionId
-                ? { ...s, grade: undefined, feedback: undefined, status: 'submitted' }
+                ? (prev || s)
                 : s
             ),
           }));
@@ -446,6 +487,7 @@ export const useStore = create<StoreState>()(
       name: 'learnhub-platform-storage',
       partialize: (state) => ({
         currentUser: state.currentUser,
+        notifications: state.notifications,
       }),
     }
   )

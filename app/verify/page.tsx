@@ -1,22 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import {
-  ShieldCheck,
-  Search,
-  Award,
-  CreditCard,
-  Building2,
-  FileCheck
-} from 'lucide-react';
+import { ShieldCheck, Search, Award, BookOpen, FileCheck } from 'lucide-react';
 
 export default function VerifyPortalPage() {
   const router = useRouter();
   const [outwardNo, setOutwardNo] = useState('');
-  const [mounted, setMounted] = useState(false);
+  const [mounted, setMounted] = React.useState(false);
 
-  useEffect(() => {
+  React.useEffect(() => {
     setMounted(true);
   }, []);
 
@@ -35,15 +28,17 @@ export default function VerifyPortalPage() {
       <div className="text-center space-y-3 max-w-xl mx-auto">
         <div className="inline-flex items-center space-x-2 px-3.5 py-1.5 rounded-full bg-[#F1F5F9] border border-[#E2E8F0] text-[#1E3A5F] text-xs font-semibold">
           <ShieldCheck className="w-4 h-4 text-[#15803D]" />
-          <span>Credential Verification Portal</span>
+          <span>Certificate Verification Portal</span>
         </div>
 
         <h1 className="text-3xl sm:text-4xl font-bold tracking-tight text-[#0F172A]">
-          Verify Official Credentials
+          Verify Official Certificates
         </h1>
 
         <p className="text-xs sm:text-sm text-[#64748B] leading-relaxed">
-          Enter a certificate outward number (<code className="text-[#1E3A5F] font-mono">CERT-2026-XXXXXX</code>) or registration number (<code className="text-[#1E3A5F] font-mono">REG-2026-XXXXXX</code>) to view the official record.
+          Enter a certificate outward number (e.g.{' '}
+          <code className="text-[#1E3A5F] font-mono">CERT-2026-XXXXXX</code>) to
+          verify an official course completion credential.
         </p>
       </div>
 
@@ -51,7 +46,7 @@ export default function VerifyPortalPage() {
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 sm:p-8 shadow-sm space-y-6 max-w-2xl mx-auto">
         <form onSubmit={handleSearch} className="space-y-3">
           <label className="text-xs font-bold text-[#0F172A] uppercase tracking-wider block">
-            Credential or Registration ID
+            Certificate Outward Number
           </label>
 
           <div className="relative flex items-center">
@@ -60,7 +55,7 @@ export default function VerifyPortalPage() {
               type="text"
               value={outwardNo}
               onChange={(e) => setOutwardNo(e.target.value)}
-              placeholder="e.g. CERT-2026-894120 or REG-2026-894120"
+              placeholder="e.g. CERT-2026-894120"
               className="w-full bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl pl-11 pr-32 py-3 text-sm text-[#0F172A] placeholder-slate-400 font-mono uppercase focus:outline-none focus:border-[#1E3A5F] focus:ring-1 focus:ring-[#1E3A5F]"
             />
             <button
@@ -71,7 +66,6 @@ export default function VerifyPortalPage() {
             </button>
           </div>
         </form>
-
       </div>
 
       {/* Trust Info Steps */}
@@ -82,7 +76,7 @@ export default function VerifyPortalPage() {
           </div>
           <h3 className="text-sm font-bold text-[#0F172A]">Institutional Issuance</h3>
           <p className="text-xs text-[#64748B] leading-relaxed">
-            All credentials are created directly under authorized institutional department registries.
+            All certificates are issued directly by authorized instructors under institutional registries.
           </p>
         </div>
 
@@ -92,7 +86,7 @@ export default function VerifyPortalPage() {
           </div>
           <h3 className="text-sm font-bold text-[#0F172A]">Instant Lookup</h3>
           <p className="text-xs text-[#64748B] leading-relaxed">
-            Outward IDs resolve directly to official recipient, course, and date metadata.
+            Certificate IDs resolve instantly to recipient name, course, and date metadata.
           </p>
         </div>
 
@@ -103,6 +97,18 @@ export default function VerifyPortalPage() {
           <h3 className="text-sm font-bold text-[#0F172A]">Status Accountability</h3>
           <p className="text-xs text-[#64748B] leading-relaxed">
             Records display clear active verification or revocation status flags.
+          </p>
+        </div>
+      </div>
+
+      {/* Privacy Notice */}
+      <div className="max-w-2xl mx-auto bg-amber-50 border border-amber-200 rounded-xl px-5 py-4 flex items-start gap-3">
+        <ShieldCheck className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-xs font-bold text-amber-900">Privacy Notice</p>
+          <p className="text-xs text-amber-700 mt-0.5 leading-relaxed">
+            This portal verifies <strong>course certificates only</strong>. Student registration records are private
+            and accessible exclusively to authorized institutional staff.
           </p>
         </div>
       </div>

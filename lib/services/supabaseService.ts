@@ -44,30 +44,42 @@ export const supabaseService = {
       console.error('Error fetching courses from Supabase:', error);
       return [];
     }
-    return data.map((c) => ({
-      id: c.id,
-      title: c.title,
-      description: c.description,
-      instructorId: c.instructor_id,
-      instructorName: c.instructor_name,
-      category: c.category,
-      duration: c.duration,
-      registrationFee: Number(c.registration_fee ?? 0),
-      startDate: c.start_date || undefined,
-      status: c.status || 'upcoming',
-      thumbnailUrl: c.thumbnail_url || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80',
-      createdAt: c.created_at,
-    }));
+    return data.map((c) => {
+      const targetMatch = c.description?.match(/\[TARGET_ASSIGNMENTS:(\d+)\]/);
+      const totalAssignments = targetMatch ? parseInt(targetMatch[1], 10) : undefined;
+      const cleanDescription = (c.description || '').replace(/\[TARGET_ASSIGNMENTS:\d+\]/g, '').trim();
+
+      return {
+        id: c.id,
+        title: c.title,
+        description: cleanDescription,
+        instructorId: c.instructor_id,
+        instructorName: c.instructor_name,
+        category: c.category,
+        duration: c.duration,
+        registrationFee: Number(c.registration_fee ?? 0),
+        startDate: c.start_date || undefined,
+        status: c.status || 'upcoming',
+        totalAssignments,
+        thumbnailUrl: c.thumbnail_url || 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80',
+        createdAt: c.created_at,
+      };
+    });
   },
 
   // Create course in Supabase
   insertCourse: async (course: Course): Promise<boolean> => {
     if (!isSupabaseConfigured() || !supabase) return false;
+    let descriptionToSave = (course.description || '').replace(/\[TARGET_ASSIGNMENTS:\d+\]/g, '').trim();
+    if (course.totalAssignments && course.totalAssignments > 0) {
+      descriptionToSave += `\n\n[TARGET_ASSIGNMENTS:${course.totalAssignments}]`;
+    }
+
     const { error } = await supabase.from('courses').insert([
       {
         id: course.id,
         title: course.title,
-        description: course.description,
+        description: descriptionToSave,
         instructor_id: course.instructorId,
         instructor_name: course.instructorName,
         category: course.category,
@@ -83,9 +95,14 @@ export const supabaseService = {
 
   updateCourse: async (course: Course): Promise<boolean> => {
     if (!isSupabaseConfigured() || !supabase) return false;
+    let descriptionToSave = (course.description || '').replace(/\[TARGET_ASSIGNMENTS:\d+\]/g, '').trim();
+    if (course.totalAssignments && course.totalAssignments > 0) {
+      descriptionToSave += `\n\n[TARGET_ASSIGNMENTS:${course.totalAssignments}]`;
+    }
+
     const { error } = await supabase.from('courses').update({
       title: course.title,
-      description: course.description,
+      description: descriptionToSave,
       category: course.category,
       duration: course.duration,
       registration_fee: course.registrationFee || 0,
@@ -119,24 +136,35 @@ export const supabaseService = {
     if (!isSupabaseConfigured() || !supabase) return [];
     const { data, error } = await supabase.from('assignments').select('*');
     if (error || !data) return [];
-    return data.map((assignment) => ({
-      id: assignment.id,
-      courseId: assignment.course_id,
-      title: assignment.title,
-      description: assignment.description,
-      dueDate: assignment.due_date,
-      maxScore: assignment.max_score,
-      createdAt: assignment.created_at,
-    }));
+    return data.map((assignment) => {
+      const isPdfRequired = Boolean((assignment.description || '').includes('[PDF_REQUIRED]'));
+      const cleanDescription = (assignment.description || '').replace(/\[PDF_REQUIRED\]/g, '').trim();
+
+      return {
+        id: assignment.id,
+        courseId: assignment.course_id,
+        title: assignment.title,
+        description: cleanDescription,
+        dueDate: assignment.due_date,
+        maxScore: assignment.max_score,
+        pdfRequired: isPdfRequired,
+        createdAt: assignment.created_at,
+      };
+    });
   },
 
   insertAssignment: async (assignment: Assignment): Promise<{ ok: boolean; error?: string }> => {
     if (!isSupabaseConfigured() || !supabase) return { ok: false, error: 'Supabase is not configured.' };
+    let descriptionToSave = (assignment.description || '').replace(/\[PDF_REQUIRED\]/g, '').trim();
+    if (assignment.pdfRequired) {
+      descriptionToSave += '\n\n[PDF_REQUIRED]';
+    }
+
     const { error } = await supabase.from('assignments').insert({
       id: assignment.id,
       course_id: assignment.courseId,
       title: assignment.title,
-      description: assignment.description,
+      description: descriptionToSave,
       due_date: assignment.dueDate,
       max_score: assignment.maxScore,
     });
@@ -145,9 +173,14 @@ export const supabaseService = {
 
   updateAssignment: async (assignment: Assignment): Promise<{ ok: boolean; error?: string }> => {
     if (!isSupabaseConfigured() || !supabase) return { ok: false, error: 'Supabase is not configured.' };
+    let descriptionToSave = (assignment.description || '').replace(/\[PDF_REQUIRED\]/g, '').trim();
+    if (assignment.pdfRequired) {
+      descriptionToSave += '\n\n[PDF_REQUIRED]';
+    }
+
     const { error } = await supabase.from('assignments').update({
       title: assignment.title,
-      description: assignment.description,
+      description: descriptionToSave,
       due_date: assignment.dueDate,
       max_score: assignment.maxScore,
     }).eq('id', assignment.id);
@@ -336,11 +369,15 @@ export const supabaseService = {
   },
 
   // Update grade + feedback on an existing submission
-  updateSubmissionGrade: async (submissionId: string, grade: number, feedback: string): Promise<boolean> => {
+  updateSubmissionGrade: async (submissionId: string, grade: number | undefined, feedback: string, status: 'graded' | 'resubmit_required' = 'graded'): Promise<boolean> => {
     if (!isSupabaseConfigured() || !supabase) return false;
+    const updatePayload: Record<string, unknown> = { status, feedback };
+    if (grade !== undefined && !isNaN(grade)) {
+      updatePayload.grade = grade;
+    }
     const { error } = await supabase
       .from('assignment_submissions')
-      .update({ grade, feedback, status: 'graded' })
+      .update(updatePayload)
       .eq('id', submissionId);
     if (error) console.error('Error grading submission:', error);
     return !error;

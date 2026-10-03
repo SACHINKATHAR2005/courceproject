@@ -5,7 +5,7 @@ import { NextResponse } from 'next/server';
 import nodemailer, { type Transporter } from 'nodemailer';
 import * as XLSX from 'xlsx';
 
-type StudentRow = { name?: unknown; email?: unknown; password?: unknown };
+type StudentRow = { name?: unknown; email?: unknown; password?: unknown; department?: unknown };
 type ImportResult = { row: number; name: string; email: string; status: 'created' | 'failed'; message: string };
 type QueueRow = { id: string; to_email: string; recipient_name: string; initial_password: string; subject: string; attempts: number };
 
@@ -24,8 +24,14 @@ function mapRows(rows: unknown[][]): StudentRow[] {
     const nameIndex = headers.findIndex((header) => ['name', 'fullname', 'studentname'].includes(header));
     const emailIndex = headers.indexOf('email');
     const passwordIndex = headers.findIndex((header) => ['password', 'initialpassword', 'initialpass'].includes(header));
+    const departmentIndex = headers.findIndex((header) => ['department', 'dept', 'branch'].includes(header));
     if (nameIndex < 0 || emailIndex < 0 || passwordIndex < 0) throw new Error('The file must contain name, email, and initial password columns.');
-    return rows.filter((row) => row.some((cell) => String(cell ?? '').trim())).map((row) => ({ name: row[nameIndex], email: row[emailIndex], password: row[passwordIndex] }));
+    return rows.filter((row) => row.some((cell) => String(cell ?? '').trim())).map((row) => ({
+        name: row[nameIndex],
+        email: row[emailIndex],
+        password: row[passwordIndex],
+        department: departmentIndex >= 0 ? row[departmentIndex] : undefined,
+    }));
 }
 
 async function getStaffRole() {
@@ -129,6 +135,7 @@ export async function POST(request: Request) {
         const name = String(row.name ?? '').trim();
         const email = String(row.email ?? '').trim().toLowerCase();
         const password = String(row.password ?? '').trim();
+        const department = String(row.department ?? '').trim() || undefined;
         const resultBase = { row: index + 2, name, email };
         if (!name || !/^\S+@\S+\.\S+$/.test(email) || password.length < 8) {
             results.push({ ...resultBase, status: 'failed', message: 'Name, valid email, and password of at least 8 characters are required.' });
@@ -147,7 +154,7 @@ export async function POST(request: Request) {
         }
         const registrationNo = `REG-${new Date().getUTCFullYear()}-${crypto.randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`;
         const { error: profileError } = await adminClient.from('profiles').upsert({ id: data.user.id, full_name: name, email, role: 'student' }, { onConflict: 'id' });
-        const { error: registrationError } = await adminClient.from('registrations').insert({ registration_no: registrationNo, student_id: data.user.id, student_name: name, email, status: 'VALID' });
+        const { error: registrationError } = await adminClient.from('registrations').insert({ registration_no: registrationNo, student_id: data.user.id, student_name: name, email, department: department ?? null, status: 'VALID' });
         if (profileError || registrationError) {
             await adminClient.auth.admin.deleteUser(data.user.id);
             results.push({ ...resultBase, status: 'failed', message: 'Account setup failed.' });

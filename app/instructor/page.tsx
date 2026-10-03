@@ -47,7 +47,8 @@ function InstructorPortalContent() {
     updateAssignment,
     issueCertificateForStudent,
     enrollments,
-    allUsers
+    allUsers,
+    addNotification,
   } = useStore();
 
   const [mounted, setMounted] = useState(false);
@@ -62,6 +63,7 @@ function InstructorPortalContent() {
   const [newCourseFee, setNewCourseFee] = useState('0');
   const [newCourseStartDate, setNewCourseStartDate] = useState('');
   const [newCourseStatus, setNewCourseStatus] = useState<'upcoming' | 'ongoing' | 'completed'>('upcoming');
+  const [newCourseTotalAssignments, setNewCourseTotalAssignments] = useState('4');
 
   // New Assignment Form State
   const [selectedCourseId, setSelectedCourseId] = useState('');
@@ -69,7 +71,9 @@ function InstructorPortalContent() {
   const [asgDesc, setAsgDesc] = useState('');
   const [asgMaxScore, setAsgMaxScore] = useState(100);
   const [asgDueDate, setAsgDueDate] = useState('');
+  const [asgPdfRequired, setAsgPdfRequired] = useState(false);
   const [assignmentFile, setAssignmentFile] = useState<File | null>(null);
+  const [submissionFilter, setSubmissionFilter] = useState<'all' | 'pending' | 'graded' | 'resubmit'>('all');
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [noteFile, setNoteFile] = useState<File | null>(null);
@@ -138,6 +142,7 @@ function InstructorPortalContent() {
       registrationFee: Number(newCourseFee) || 0,
       startDate: newCourseStartDate,
       status: newCourseStatus,
+      totalAssignments: Number(newCourseTotalAssignments) || 0,
       instructorId: currentUser.id,
       instructorName: currentUser.fullName,
       thumbnailUrl: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=600&auto=format&fit=crop&q=80',
@@ -153,6 +158,7 @@ function InstructorPortalContent() {
     setNewCourseFee('0');
     setNewCourseStartDate('');
     setNewCourseStatus('upcoming');
+    setNewCourseTotalAssignments('4');
     setSelectedCourseId(createdCourse.id);
     setCourseFormOpen(false);
     showToast('New course created successfully.');
@@ -171,15 +177,31 @@ function InstructorPortalContent() {
       title: asgTitle,
       description: asgDesc,
       maxScore: Number(asgMaxScore),
+      pdfRequired: asgPdfRequired,
       dueDate: new Date(`${asgDueDate}T23:59:59`).toISOString(),
     }).then((result) => {
       if (!result.assignment) {
         setAssignmentError(result.error || 'Assignment could not be saved. Check your Supabase permissions.');
         return;
       }
+
+      // Dispatch notifications to all enrolled students
+      const enrolledStudents = enrollments.filter((enr) => enr.courseId === selectedCourseId);
+      const targetCourse = courses.find((c) => c.id === selectedCourseId);
+      enrolledStudents.forEach((enr) => {
+        addNotification({
+          userId: enr.studentId,
+          title: 'New Assignment Posted',
+          message: `"${asgTitle}" has been posted in ${targetCourse?.title || 'your course'}.`,
+          type: 'assignment_posted',
+          link: '/dashboard/assignments',
+        });
+      });
+
       setAsgTitle('');
       setAsgDesc('');
       setAsgDueDate('');
+      setAsgPdfRequired(false);
       const pdf = assignmentFile;
       setAssignmentFile(null);
       if (pdf) {
@@ -206,6 +228,7 @@ function InstructorPortalContent() {
     setAsgDesc(assignment.description);
     setAsgMaxScore(assignment.maxScore);
     setAsgDueDate(assignment.dueDate ? assignment.dueDate.slice(0, 10) : '');
+    setAsgPdfRequired(Boolean(assignment.pdfRequired));
     setAssignmentFile(null);
     setAssignmentError('');
   };
@@ -217,6 +240,7 @@ function InstructorPortalContent() {
     setAsgDesc('');
     setAsgMaxScore(100);
     setAsgDueDate('');
+    setAsgPdfRequired(false);
     setAssignmentFile(null);
   };
 
@@ -232,6 +256,7 @@ function InstructorPortalContent() {
       title: asgTitle.trim(),
       description: asgDesc.trim(),
       maxScore: Number(asgMaxScore),
+      pdfRequired: asgPdfRequired,
       dueDate: new Date(`${asgDueDate}T23:59:59`).toISOString(),
     });
     if (!result.ok) {
@@ -269,6 +294,20 @@ function InstructorPortalContent() {
       setNoteError(result.error || 'Note could not be saved.');
       return;
     }
+
+    // Dispatch in-app notifications to all enrolled students
+    const enrolledStudents = enrollments.filter((enr) => enr.courseId === selectedCourseId);
+    const targetCourse = courses.find((c) => c.id === selectedCourseId);
+    enrolledStudents.forEach((enr) => {
+      addNotification({
+        userId: enr.studentId,
+        title: 'New Course Notes',
+        message: `New notes "${noteTitle}" posted in ${targetCourse?.title || 'your course'}.`,
+        type: 'note_added',
+        link: '/dashboard/assignments',
+      });
+    });
+
     setNoteTitle('');
     setNoteContent('');
     setNoteFile(null);
@@ -286,6 +325,7 @@ function InstructorPortalContent() {
     setNewCourseFee(String(course.registrationFee || 0));
     setNewCourseStartDate(course.startDate || '');
     setNewCourseStatus(course.status || 'upcoming');
+    setNewCourseTotalAssignments(String(course.totalAssignments || 4));
     setCourseError('');
   };
 
@@ -299,6 +339,7 @@ function InstructorPortalContent() {
     setNewCourseFee('0');
     setNewCourseStartDate('');
     setNewCourseStatus('upcoming');
+    setNewCourseTotalAssignments('4');
     setCourseError('');
   };
 
@@ -316,6 +357,7 @@ function InstructorPortalContent() {
       registrationFee: Number(newCourseFee) || 0,
       startDate: newCourseStartDate,
       status: newCourseStatus,
+      totalAssignments: Number(newCourseTotalAssignments) || 0,
     });
     if (!saved) {
       setCourseError('Course changes could not be saved. Check your Supabase permissions.');
@@ -403,88 +445,215 @@ function InstructorPortalContent() {
         </div>
 
         {/* SUBMISSIONS QUEUE TAB */}
-        {activeTab === 'submissions' && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
-                <FileText className="w-5 h-5 text-indigo-400" />
-                <span>Student Submissions Queue</span>
-              </h2>
-            </div>
+        {activeTab === 'submissions' && (() => {
+          const instructorCourseIds = new Set(myCourses.map((c) => c.id));
+          const relevantSubmissions = submissions.filter((sub) => {
+            const asg = assignments.find((a) => a.id === sub.assignmentId);
+            return asg && instructorCourseIds.has(asg.courseId);
+          });
 
-            {submissions.length === 0 ? (
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center text-slate-400 text-sm">
-                No submissions to review.
+          const pendingSubmissions = relevantSubmissions.filter((s) => s.status === 'submitted');
+          const gradedSubmissions = relevantSubmissions.filter((s) => s.status === 'graded');
+          const resubmitSubmissions = relevantSubmissions.filter((s) => s.status === 'resubmit_required');
+
+          const filteredSubmissions =
+            submissionFilter === 'pending'
+              ? pendingSubmissions
+              : submissionFilter === 'graded'
+              ? gradedSubmissions
+              : submissionFilter === 'resubmit'
+              ? resubmitSubmissions
+              : relevantSubmissions;
+
+          return (
+            <div className="space-y-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                    <FileText className="w-5 h-5 text-indigo-400" />
+                    <span>Student Submissions Queue</span>
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Review incoming student projects, evaluate submissions, give scores, or request revisions.
+                  </p>
+                </div>
+
+                {/* Sub-filter tabs */}
+                <div className="flex flex-wrap gap-1.5 rounded-xl border border-slate-800 bg-slate-900 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionFilter('all')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                      submissionFilter === 'all'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    All ({relevantSubmissions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionFilter('pending')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all flex items-center gap-1.5 ${
+                      submissionFilter === 'pending'
+                        ? 'bg-amber-500 text-slate-950 shadow-sm'
+                        : 'text-amber-400 hover:text-amber-300'
+                    }`}
+                  >
+                    <span>Pending ({pendingSubmissions.length})</span>
+                    {pendingSubmissions.length > 0 && (
+                      <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionFilter('graded')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                      submissionFilter === 'graded'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-emerald-400 hover:text-emerald-300'
+                    }`}
+                  >
+                    Graded ({gradedSubmissions.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSubmissionFilter('resubmit')}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+                      submissionFilter === 'resubmit'
+                        ? 'bg-red-600 text-white shadow-sm'
+                        : 'text-red-400 hover:text-red-300'
+                    }`}
+                  >
+                    Revision ({resubmitSubmissions.length})
+                  </button>
+                </div>
               </div>
-            ) : (
-              <div className="space-y-4">
-                {submissions.map((sub) => {
-                  const asg = assignments.find((a) => a.id === sub.assignmentId);
-                  const course = courses.find((c) => c.id === asg?.courseId);
 
-                  return (
-                    <div
-                      key={sub.id}
-                      className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl"
-                    >
-                      <div className="space-y-2 flex-1">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-xs font-bold text-slate-200">{sub.studentName || 'Student'}</span>
-                          <span className="text-slate-600">•</span>
-                          <span className="text-xs text-indigo-300 font-semibold">{course?.title}</span>
+              {filteredSubmissions.length === 0 ? (
+                <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center text-slate-400 text-sm">
+                  {submissionFilter === 'pending'
+                    ? 'No new pending submissions right now. You are all caught up!'
+                    : submissionFilter === 'graded'
+                    ? 'No graded submissions yet.'
+                    : submissionFilter === 'resubmit'
+                    ? 'No submissions currently awaiting revision.'
+                    : 'No submissions found for your courses.'}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filteredSubmissions.map((sub) => {
+                    const asg = assignments.find((a) => a.id === sub.assignmentId);
+                    const course = courses.find((c) => c.id === asg?.courseId);
+                    const isPdf = sub.fileUrl?.toLowerCase().includes('.pdf');
+
+                    return (
+                      <div
+                        key={sub.id}
+                        className="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 shadow-xl"
+                      >
+                        <div className="space-y-3 flex-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-bold text-slate-200">{sub.studentName || 'Student'}</span>
+                            <span className="text-slate-600">•</span>
+                            <span className="text-xs text-indigo-300 font-semibold">{course?.title}</span>
+                          </div>
+
+                          <h4 className="text-base font-bold text-white">{asg?.title || 'Assignment'}</h4>
+
+                          <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                            <p className="text-xs text-slate-400 whitespace-pre-wrap">
+                              {sub.submissionText}
+                            </p>
+
+                            {/* View attached PDF or link */}
+                            {sub.fileUrl && (
+                              <div className="pt-1">
+                                {isPdf ? (
+                                  <a
+                                    href={sub.fileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-500/40 bg-indigo-500/10 px-3 py-1.5 text-xs font-semibold text-indigo-300 hover:bg-indigo-500/20 transition-colors"
+                                  >
+                                    <FileText className="w-3.5 h-3.5" />
+                                    <span>Download / View Student PDF</span>
+                                  </a>
+                                ) : (
+                                  <a
+                                    href={sub.fileUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-800 transition-colors"
+                                  >
+                                    <span>View Project Repository / Link</span>
+                                  </a>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {sub.feedback && (
+                            <div className={`p-2.5 rounded-xl border text-xs ${
+                              sub.status === 'resubmit_required'
+                                ? 'bg-red-500/10 border-red-500/20 text-red-300'
+                                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300'
+                            }`}>
+                              <span className="font-bold">
+                                {sub.status === 'resubmit_required' ? 'Revision Note: ' : 'Feedback: '}
+                              </span>
+                              <span className="italic">&ldquo;{sub.feedback}&rdquo;</span>
+                            </div>
+                          )}
                         </div>
 
-                        <h4 className="text-base font-bold text-white">{asg?.title || 'Assignment'}</h4>
-                        <p className="text-xs text-slate-400 bg-slate-950 p-3 rounded-xl border border-slate-800">
-                          {sub.submissionText}
-                        </p>
-
-                        {sub.feedback && (
-                          <p className="text-xs text-emerald-400 italic">
-                            Feedback: &ldquo;{sub.feedback}&rdquo;
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col items-end space-y-3 min-w-45">
-                        <span className={`text-xs font-bold px-3 py-1 rounded-full border uppercase ${sub.status === 'graded'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        <div className="flex flex-col items-end space-y-3 min-w-45 shrink-0">
+                          <span className={`text-xs font-bold px-3 py-1 rounded-full border uppercase ${
+                            sub.status === 'graded'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                              : sub.status === 'resubmit_required'
+                              ? 'bg-red-500/20 text-red-300 border-red-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
                           }`}>
-                          {sub.status} {sub.grade !== undefined && `(${sub.grade} pts)`}
-                        </span>
+                            {sub.status === 'resubmit_required'
+                              ? 'Revision Requested'
+                              : sub.status === 'graded'
+                              ? `Graded (${sub.grade ?? 0} pts)`
+                              : 'Pending Review'}
+                          </span>
 
-                        <button
-                          onClick={() => setGradingSubmission(sub)}
-                          className="w-full px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5"
-                        >
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span>{sub.status === 'graded' ? 'Edit Grade' : 'Grade Submission'}</span>
-                        </button>
-
-                        {/* Issue Cert Button */}
-                        {course && (
                           <button
-                            onClick={() => {
-                              issueCertificateForStudent(sub.studentId, course.id).then((result) => {
-                                if (result.certificate) showToast(`Certificate issued: ${result.certificate.outwardNo}`);
-                                else showToast(result.error || 'Certificate could not be issued.', 'error');
-                              });
-                            }}
-                            className="w-full px-4 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all flex items-center justify-center space-x-1"
+                            onClick={() => setGradingSubmission(sub)}
+                            className="w-full px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5 cursor-pointer"
                           >
-                            <Award className="w-3.5 h-3.5" />
-                            <span>Approve & Certify</span>
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>{sub.status === 'graded' ? 'Edit Grade' : 'Review & Grade'}</span>
                           </button>
-                        )}
+
+                          {/* Issue Cert Button */}
+                          {course && (
+                            <button
+                              onClick={() => {
+                                issueCertificateForStudent(sub.studentId, course.id).then((result) => {
+                                  if (result.certificate) showToast(`Certificate issued: ${result.certificate.outwardNo}`);
+                                  else showToast(result.error || 'Certificate could not be issued.', 'error');
+                                });
+                              }}
+                              className="w-full px-4 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold transition-all flex items-center justify-center space-x-1 cursor-pointer"
+                            >
+                              <Award className="w-3.5 h-3.5" />
+                              <span>Approve & Certify</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* CREATE COURSE TAB */}
         {activeTab === 'courses' && (
@@ -644,6 +813,24 @@ function InstructorPortalContent() {
                   </div>
 
                   <div>
+                    <label className="text-xs font-bold uppercase text-slate-300">
+                      Target Assignments Count (For Progress Tracking) *
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      required
+                      value={newCourseTotalAssignments}
+                      onChange={(e) => setNewCourseTotalAssignments(e.target.value)}
+                      placeholder="e.g. 4"
+                      className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm text-white focus:outline-none focus:border-indigo-400"
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      Used to calculate student progress percentage (e.g. 4 assignments = 25% per submission). Can be adjusted anytime.
+                    </p>
+                  </div>
+
+                  <div>
                     <label className="text-xs font-bold uppercase text-slate-300">Course Status</label>
                     <select
                       value={newCourseStatus}
@@ -798,6 +985,21 @@ function InstructorPortalContent() {
                       className="mt-1 w-full rounded-xl border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-indigo-500/20 file:px-3 file:py-2 file:text-xs file:font-bold file:text-indigo-200"
                     />
                     <p className="mt-1 text-[11px] text-slate-500">PDF only, maximum 20 MB. Enrolled students can access it with this assignment.</p>
+                  </div>
+
+                  {/* Mandatory PDF Checkbox */}
+                  <div className="flex items-start space-x-3 rounded-xl border border-slate-800 bg-slate-950 p-4">
+                    <input
+                      type="checkbox"
+                      id="asgPdfRequired"
+                      checked={asgPdfRequired}
+                      onChange={(e) => setAsgPdfRequired(e.target.checked)}
+                      className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-900 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                    />
+                    <label htmlFor="asgPdfRequired" className="text-xs text-slate-300 font-medium cursor-pointer">
+                      <span className="font-bold text-white block">Make Student PDF Upload Mandatory</span>
+                      When enabled, students must upload a valid PDF document before their submission is accepted.
+                    </label>
                   </div>
 
                   <button

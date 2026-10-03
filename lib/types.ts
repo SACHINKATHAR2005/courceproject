@@ -56,6 +56,18 @@ export interface Assignment {
   description: string;
   dueDate: string;
   maxScore: number;
+  pdfRequired?: boolean;
+  createdAt: string;
+}
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'assignment_posted' | 'assignment_submitted' | 'assignment_graded' | 'resubmit_required' | 'note_added' | 'certificate_issued';
+  link?: string;
+  read: boolean;
   createdAt: string;
 }
 
