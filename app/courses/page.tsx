@@ -143,7 +143,7 @@ export default function CoursesPage() {
                       </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-300">
-                      <span className="text-emerald-300">{paymentBreakdown.total ? `₹${paymentBreakdown.total.toFixed(2)} total` : 'Free'}</span>
+                      <span className="text-emerald-300">{paymentBreakdown.baseFee ? `₹${paymentBreakdown.baseFee.toFixed(2)}` : 'Free'}</span>
                       <span className="flex items-center gap-1 text-slate-400"><CalendarDays className="h-3.5 w-3.5" />{formatCourseDate(course.startDate)}</span>
                     </div>
                   </div>

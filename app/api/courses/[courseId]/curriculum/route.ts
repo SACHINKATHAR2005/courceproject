@@ -23,10 +23,6 @@ function getAdminClient() {
     return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
-function isAllowedUser(profile: { role?: string } | null, userId: string, course: { instructor_id?: string } | null) {
-    return profile?.role === 'admin' || course?.instructor_id === userId || profile?.role === 'student';
-}
-
 export async function POST(request: Request, { params }: { params: Promise<{ courseId: string }> }) {
     const user = await getSessionUser();
     const admin = getAdminClient();
@@ -82,22 +78,29 @@ export async function GET(_request: Request, { params }: { params: Promise<{ cou
     const { courseId } = await params;
     if (!admin) return NextResponse.json({ error: 'Storage is not configured.' }, { status: 503 });
 
-    const [{ data: profile }, { data: course }, { data: material }] = await Promise.all([
-        user ? admin.from('profiles').select('role').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+    const [{ data: course }, { data: material }] = await Promise.all([
         admin.from('courses').select('id, instructor_id').eq('id', courseId).maybeSingle(),
         admin.from('course_materials').select('file_name, storage_path, mime_type, file_size, created_at').eq('course_id', courseId).maybeSingle(),
     ]);
     if (!course) return NextResponse.json({ error: 'Course not found.' }, { status: 404 });
-    if (!material) return NextResponse.json({ material: null });
 
+    // Not logged in → deny, return requiresLogin flag (no file metadata)
     if (!user) {
-        return NextResponse.json({ material: { file_name: material.file_name, mime_type: material.mime_type, file_size: material.file_size, created_at: material.created_at, requiresLogin: true } });
+        return NextResponse.json({ material: material ? { requiresLogin: true } : null });
     }
 
-    if (!isAllowedUser(profile, user.id, course)) {
-        return NextResponse.json({ material: { file_name: material.file_name, mime_type: material.mime_type, file_size: material.file_size, created_at: material.created_at, requiresLogin: true } });
+    // Logged in — check role
+    const [{ data: profile }, { data: enrollment }] = await Promise.all([
+        admin.from('profiles').select('role').eq('id', user.id).maybeSingle(),
+        admin.from('enrollments').select('id').eq('course_id', courseId).eq('student_id', user.id).maybeSingle(),
+    ]);
+
+    const isAuthorized = profile?.role === 'admin' || course?.instructor_id === user.id || Boolean(enrollment);
+    if (!isAuthorized) {
+        return NextResponse.json({ material: material ? { requiresLogin: true } : null });
     }
 
+    if (!material) return NextResponse.json({ material: null });
     const { data: signed, error } = await admin.storage.from('course-materials').createSignedUrl(material.storage_path, 3600);
     if (error || !signed?.signedUrl) return NextResponse.json({ error: 'Curriculum link could not be created.' }, { status: 500 });
     return NextResponse.json({ material: { ...material, url: signed.signedUrl } });

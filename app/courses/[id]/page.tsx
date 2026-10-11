@@ -136,7 +136,7 @@ export default function CourseDetailPage() {
                 <span>Starts: <strong>{formatCourseDate(course.startDate)}</strong></span>
               </span>
               <span className="font-bold text-emerald-300">
-                {paymentBreakdown.total ? `Total: ₹${paymentBreakdown.total.toFixed(2)}` : 'Free enrollment'}
+                {paymentBreakdown.baseFee ? `₹${paymentBreakdown.baseFee.toFixed(2)}` : 'Free enrollment'}
               </span>
             </div>
           </div>

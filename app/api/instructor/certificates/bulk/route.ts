@@ -75,9 +75,53 @@ export async function POST(request: Request) {
             : { studentId: student.id, studentName: student.full_name, outwardNo, status: 'issued' });
     }
 
+    const issuedResults = results.filter((result) => result.status === 'issued');
+    const successfullyIssuedStudentIds = issuedResults.map((r) => r.studentId);
+
+    // If requested, clean up uploaded assignment files for students whose certificates were issued
+    let freedFilesCount = 0;
+    const body = await request.json().catch(() => ({})) as { courseId?: string; deleteSubmissionsOnComplete?: boolean };
+    if (body.deleteSubmissionsOnComplete && successfullyIssuedStudentIds.length > 0) {
+        try {
+            const { data: subsToDelete } = await admin
+                .from('assignment_submissions')
+                .select('id, file_url')
+                .in('assignment_id', assignmentIds)
+                .in('student_id', successfullyIssuedStudentIds);
+
+            const filesToRemove: string[] = [];
+            const subIds: string[] = [];
+
+            for (const sub of subsToDelete || []) {
+                if (sub.file_url && sub.file_url.includes('submissions/')) {
+                    const parts = sub.file_url.split('submissions/');
+                    const cleanPath = parts[1]?.split('?')[0];
+                    if (cleanPath) {
+                        filesToRemove.push(`submissions/${cleanPath}`);
+                        subIds.push(sub.id);
+                    }
+                }
+            }
+
+            if (filesToRemove.length > 0) {
+                for (let i = 0; i < filesToRemove.length; i += 50) {
+                    const chunk = filesToRemove.slice(i, i + 50);
+                    const { error: delErr } = await admin.storage.from('course-materials').remove(chunk);
+                    if (!delErr) freedFilesCount += chunk.length;
+                }
+                if (subIds.length > 0) {
+                    await admin.from('assignment_submissions').update({ file_url: null }).in('id', subIds);
+                }
+            }
+        } catch (cleanErr) {
+            console.error('Failed to auto-clean storage after certificate issuance:', cleanErr);
+        }
+    }
+
     return NextResponse.json({
-        issued: results.filter((result) => result.status === 'issued').length,
-        skipped: studentIds.length - results.filter((result) => result.status === 'issued').length,
+        issued: issuedResults.length,
+        skipped: studentIds.length - issuedResults.length,
+        freedFilesCount,
         results,
     });
 }

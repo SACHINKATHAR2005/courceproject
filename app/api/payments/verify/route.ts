@@ -3,6 +3,9 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
+import { sendPaymentReceiptEmail } from '@/lib/email/sendReceipt';
+
+const PROCESSING_RATE = 0.0236;
 
 export async function POST(request: Request) {
     try {
@@ -36,11 +39,12 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Payment signature could not be verified.' }, { status: 400 });
         }
 
+        const paidAt = new Date().toISOString();
         await admin.from('payments').update({
             razorpay_payment_id: body.razorpay_payment_id,
             razorpay_signature: body.razorpay_signature,
             status: 'paid',
-            paid_at: new Date().toISOString(),
+            paid_at: paidAt,
         }).eq('id', payment.id);
 
         const { error: enrollmentError } = await admin.from('enrollments').upsert({
@@ -49,6 +53,29 @@ export async function POST(request: Request) {
             status: 'enrolled',
         }, { onConflict: 'student_id,course_id' });
         if (enrollmentError) return NextResponse.json({ error: 'Payment succeeded but enrollment could not be created.' }, { status: 500 });
+
+        // Send receipt email (fire-and-forget — don't block the response)
+        const [{ data: profile }, { data: course }] = await Promise.all([
+            admin.from('profiles').select('full_name, email').eq('id', user.id).maybeSingle(),
+            admin.from('courses').select('title, registration_fee').eq('id', body.courseId).maybeSingle(),
+        ]);
+
+        if (profile && course) {
+            const baseFee = Number(course.registration_fee || 0);
+            const processingFee = Math.round(baseFee * PROCESSING_RATE * 100) / 100;
+            const totalFee = Math.round((baseFee + processingFee) * 100) / 100;
+            sendPaymentReceiptEmail({
+                toEmail: profile.email || user.email || '',
+                studentName: profile.full_name || 'Student',
+                courseTitle: course.title,
+                baseFee,
+                processingFee,
+                totalFee,
+                razorpayPaymentId: body.razorpay_payment_id,
+                razorpayOrderId: body.razorpay_order_id,
+                paidAt,
+            }).catch((err) => console.error('Receipt email failed:', err));
+        }
 
         return NextResponse.json({ ok: true });
     } catch (error) {

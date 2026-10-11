@@ -91,7 +91,12 @@ async function processEmailQueue(adminClient: SupabaseClient, mailer: Transporte
                 text: `Hello ${item.recipient_name},\n\nYou have been registered on LearnHub.\n\nEmail: ${item.to_email}\nInitial password: ${item.initial_password}\n\nPlease sign in and change your password after signing in.`,
                 html: `<p>Hello ${safeName},</p><p>You have been registered on LearnHub.</p><p><strong>Email:</strong> ${safeEmail}<br><strong>Initial password:</strong> ${safePassword}</p><p>Please sign in and change your password after signing in.</p>`,
             });
-            await adminClient.from('email_queue').update({ status: 'sent', sent_at: new Date().toISOString() }).eq('id', item.id);
+            // Clear the plaintext password from the DB after successful send
+            await adminClient.from('email_queue').update({
+                status: 'sent',
+                sent_at: new Date().toISOString(),
+                initial_password: null,
+            }).eq('id', item.id);
             outcomes.set(item.to_email, 'sent');
         } catch (error) {
             await adminClient.from('email_queue').update({ status: 'failed', last_error: error instanceof Error ? error.message : 'Email delivery failed.' }).eq('id', item.id);

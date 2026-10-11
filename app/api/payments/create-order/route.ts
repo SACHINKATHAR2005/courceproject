@@ -4,7 +4,7 @@ import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import { createSupabaseAdminClient } from '@/lib/supabase/admin';
 
-const PAYMENT_PROCESSING_RATE = 0.02;
+const PAYMENT_PROCESSING_RATE = 0.0236; // 2.36%
 
 export async function POST(request: Request) {
     try {
@@ -62,8 +62,7 @@ export async function POST(request: Request) {
         if (paymentError) {
             console.error('Payment ledger insert failed:', paymentError);
             return NextResponse.json({
-                error: `Could not create payment record: ${paymentError.message}`,
-                code: paymentError.code,
+                error: 'Could not create payment record. Please try again.',
             }, { status: 500 });
         }
 

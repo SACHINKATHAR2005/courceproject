@@ -6,6 +6,7 @@ import { useStore } from '@/lib/store/useStore';
 import { GradingModal } from '@/components/grading-modal';
 import { BulkStudentImport } from '@/components/bulk-student-import';
 import { BulkCertificateIssue } from '@/components/bulk-certificate-issue';
+import { StorageMonitorBar } from '@/components/storage-monitor-bar';
 import { CurriculumUpload } from '@/components/curriculum-upload';
 import { Assignment, AssignmentSubmission, Course } from '@/lib/types';
 import {
@@ -443,6 +444,9 @@ function InstructorPortalContent() {
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Submissions</p><p className="mt-2 text-2xl font-bold text-slate-900">{submissions.length}</p></div>
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Assignments</p><p className="mt-2 text-2xl font-bold text-slate-900">{assignments.length}</p></div>
         </div>
+
+        {/* Global Storage Monitoring (1 GB Limit) */}
+        <StorageMonitorBar onCleanComplete={() => { void useStore.getState().hydrateFromSupabase(); }} />
 
         {/* SUBMISSIONS QUEUE TAB */}
         {activeTab === 'submissions' && (() => {

@@ -1,26 +1,14 @@
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { checkRateLimit, clearRateLimit } from '@/lib/ratelimit';
 
-const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
-const attempts = new Map<string, { count: number; resetAt: number }>();
 
 function getClientKey(request: Request, email: string) {
     const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
     const address = forwardedFor || request.headers.get('x-real-ip') || 'unknown-client';
-    return `${address}:${email}`;
-}
-
-function getLimit(key: string) {
-    const now = Date.now();
-    const current = attempts.get(key);
-    if (!current || current.resetAt <= now) {
-        const next = { count: 0, resetAt: now + WINDOW_MS };
-        attempts.set(key, next);
-        return next;
-    }
-    return current;
+    return `login:${address}:${email}`;
 }
 
 export async function POST(request: Request) {
@@ -36,9 +24,13 @@ export async function POST(request: Request) {
     if (!email || !password) return NextResponse.json({ error: 'Email and password are required.' }, { status: 400 });
 
     const key = getClientKey(request, email);
-    const limit = getLimit(key);
-    if (limit.count >= MAX_ATTEMPTS) {
-        return NextResponse.json({ error: 'Too many login attempts. Please try again in 15 minutes.' }, { status: 429, headers: { 'Retry-After': String(Math.ceil((limit.resetAt - Date.now()) / 1000)) } });
+    const { limited, resetAt } = await checkRateLimit(key, MAX_ATTEMPTS);
+    if (limited) {
+        const retryAfter = Math.ceil((resetAt.getTime() - Date.now()) / 1000);
+        return NextResponse.json(
+            { error: 'Too many login attempts. Please try again in 15 minutes.' },
+            { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+        );
     }
 
     const cookieStore = await cookies();
@@ -56,7 +48,7 @@ export async function POST(request: Request) {
 
     const { data, error } = await sessionClient.auth.signInWithPassword({ email, password });
     if (error || !data.user) {
-        limit.count += 1;
+        // Don't await — fire-and-forget the increment (already incremented in checkRateLimit)
         return NextResponse.json({ error: 'Invalid email or password.' }, { status: 401 });
     }
 
@@ -70,7 +62,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Use the staff access page for Instructor or Admin accounts.' }, { status: 403 });
     }
 
-    attempts.delete(key);
+    // Clear rate limit on successful login
+    await clearRateLimit(key);
+
     const response = NextResponse.json({
         ok: true,
         profile: { id: profile.id, fullName: profile.full_name, email: profile.email, phone: profile.phone, role: profile.role, avatarUrl: profile.avatar_url, createdAt: profile.created_at },

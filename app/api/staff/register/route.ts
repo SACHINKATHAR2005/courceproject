@@ -1,9 +1,26 @@
 import { createClient } from '@supabase/supabase-js';
 import { NextResponse } from 'next/server';
+import { checkRateLimit } from '@/lib/ratelimit';
 
 const allowedRoles = new Set(['instructor', 'admin']);
 
+function getClientIp(request: Request) {
+    const forwardedFor = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+    return forwardedFor || request.headers.get('x-real-ip') || 'unknown-client';
+}
+
 export async function POST(request: Request) {
+    // Rate limit: 5 attempts per 15 minutes per IP
+    const ip = getClientIp(request);
+    const { limited, resetAt } = await checkRateLimit(`staff-register:${ip}`, 5);
+    if (limited) {
+        const retryAfter = Math.ceil((resetAt.getTime() - Date.now()) / 1000);
+        return NextResponse.json(
+            { error: 'Too many registration attempts. Please try again later.' },
+            { status: 429, headers: { 'Retry-After': String(retryAfter) } },
+        );
+    }
+
     const registrationCode = process.env.STAFF_REGISTRATION_CODE;
     const serviceRoleKey = process.env.SUPABASE_SECRET_KEY;
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -42,10 +59,11 @@ export async function POST(request: Request) {
     });
 
     if (error || !data.user) {
-        const duplicate = error?.message.toLowerCase().includes('already') || error?.message.toLowerCase().includes('exist');
+        // Return the same generic error regardless of whether email is duplicate
+        // to prevent email enumeration
         return NextResponse.json(
-            { error: duplicate ? 'An account with this email already exists. Please sign in instead.' : 'Unable to create staff account.' },
-            { status: duplicate ? 409 : 400 },
+            { error: 'Unable to complete staff registration. Please try again.' },
+            { status: 400 },
         );
     }
 

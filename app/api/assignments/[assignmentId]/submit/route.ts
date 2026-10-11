@@ -4,6 +4,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024; // 25 MB
+const MAX_TEXT_LENGTH = 10_000;
 
 async function getUser() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,6 +24,15 @@ function adminClient() {
   return url && key
     ? createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } })
     : null;
+}
+
+function isValidHttpsUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
 }
 
 export async function POST(
@@ -65,6 +75,22 @@ export async function POST(
     const submissionText = (formData.get('submissionText') as string) || '';
     const externalLink = (formData.get('fileUrl') as string) || '';
     const file = formData.get('file');
+
+    // Validate submission text length
+    if (submissionText.length > MAX_TEXT_LENGTH) {
+      return NextResponse.json(
+        { error: `Submission notes must be ${MAX_TEXT_LENGTH.toLocaleString()} characters or fewer.` },
+        { status: 400 },
+      );
+    }
+
+    // Validate external link if provided
+    if (externalLink && !isValidHttpsUrl(externalLink)) {
+      return NextResponse.json(
+        { error: 'External file URL must be a valid https:// link.' },
+        { status: 400 },
+      );
+    }
 
     const isPdfRequired = Boolean((assignment.description || '').includes('[PDF_REQUIRED]'));
 
@@ -112,7 +138,7 @@ export async function POST(
     } else if (isPdfRequired && !finalFileUrl.toLowerCase().includes('.pdf')) {
       return NextResponse.json(
         { error: 'A PDF document submission is required by the instructor for this assignment.' },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -136,7 +162,7 @@ export async function POST(
           status: 'submitted',
           submitted_at: now,
         },
-        { onConflict: 'assignment_id,student_id' }
+        { onConflict: 'assignment_id,student_id' },
       )
       .select('*')
       .single();
