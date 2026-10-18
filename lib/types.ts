@@ -112,3 +112,12 @@ export interface RegistrationCard {
   status: 'VALID' | 'REVOKED';
   createdAt: string;
 }
+
+export interface CertificateSettings {
+  institutionName: string;
+  directorName: string;
+  directorTitle: string;
+  directorSignatureUrl?: string;
+  instructorSignatureUrl?: string;
+  stampUrl?: string;
+}

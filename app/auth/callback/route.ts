@@ -2,8 +2,9 @@ import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function GET(request: NextRequest) {
-    const code = request.nextUrl.searchParams.get('code');
-    const origin = request.nextUrl.origin;
+    const { searchParams, origin } = request.nextUrl;
+    const code = searchParams.get('code');
+    const next = searchParams.get('next') ?? '/dashboard';
     let response = NextResponse.next();
 
     if (!code) return NextResponse.redirect(new URL('/login?error=oauth_failed', request.url));
@@ -27,6 +28,14 @@ export async function GET(request: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.redirect(new URL('/login?error=oauth_failed', request.url));
 
+    // For password recovery flow, skip role check and redirect to the reset page
+    if (next === '/reset-password') {
+        const redirectResponse = NextResponse.redirect(new URL('/reset-password', origin));
+        response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+        return redirectResponse;
+    }
+
+    // For normal OAuth (Google etc.) — enforce student-only
     const { data: profile } = await supabase
         .from('profiles')
         .select('role')
@@ -38,7 +47,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.redirect(new URL('/login?error=student_only', origin));
     }
 
-    const redirectResponse = NextResponse.redirect(new URL('/dashboard', origin));
+    const redirectResponse = NextResponse.redirect(new URL(next, origin));
     response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
     return redirectResponse;
 }

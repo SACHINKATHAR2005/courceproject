@@ -593,6 +593,60 @@ CREATE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- ----------------------------------------------------------------------------
+-- 10. COOKIE CONSENTS & AUDIT LOGS
+-- ----------------------------------------------------------------------------
+-- Cookie consents tracking
+CREATE TABLE IF NOT EXISTS cookie_consents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  ip_hash text NOT NULL,
+  accepted boolean NOT NULL,
+  user_agent text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Audit / event logs
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type text NOT NULL,
+  payload jsonb DEFAULT '{}',
+  user_id text,
+  ip text,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_cookie_consents_created_at ON cookie_consents(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_event_type ON audit_logs(event_type);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON audit_logs(created_at DESC);
+
+-- ----------------------------------------------------------------------------
+-- 9. CERTIFICATE BRANDING SETTINGS (E-Signatures & Stamp)
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.certificate_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    institution_name TEXT NOT NULL DEFAULT 'LearnHub Institute of Technology',
+    director_name TEXT NOT NULL DEFAULT 'Director',
+    director_title TEXT NOT NULL DEFAULT 'LearnHub Certify',
+    director_signature_url TEXT,
+    instructor_signature_url TEXT,
+    stamp_url TEXT,
+    updated_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+ALTER TABLE public.certificate_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Certificate settings viewable by everyone" ON public.certificate_settings;
+CREATE POLICY "Certificate settings viewable by everyone"
+    ON public.certificate_settings FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Staff can manage certificate settings" ON public.certificate_settings;
+CREATE POLICY "Staff can manage certificate settings"
+    ON public.certificate_settings FOR ALL
+    USING (public.current_user_role() IN ('instructor', 'admin'))
+    WITH CHECK (public.current_user_role() IN ('instructor', 'admin'));
+
 -- ============================================================================
 -- END OF SCHEMA SCRIPT
 -- ============================================================================

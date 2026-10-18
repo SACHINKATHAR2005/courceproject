@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { UserProfile, Course, Enrollment, Assignment, AssignmentSubmission, Certificate, UserRole, RegistrationCard, AppNotification } from '../types';
+import { UserProfile, Course, Enrollment, Assignment, AssignmentSubmission, Certificate, UserRole, RegistrationCard, AppNotification, CertificateSettings } from '../types';
 import { supabaseService } from '../services/supabaseService';
 
 interface StoreState {
@@ -46,6 +46,10 @@ interface StoreState {
   getCertificateByOutwardNo: (outwardNo: string) => Certificate | undefined;
   getCertificateById: (certId: string) => Certificate | undefined;
   revokeCertificate: (certId: string) => Promise<boolean>;
+
+  // Certificate Branding, E-Signatures & Stamp
+  certificateSettings: CertificateSettings;
+  updateCertificateSettings: (settings: Partial<CertificateSettings>) => Promise<boolean>;
 
   // Registration Cards state
   registrationCards: RegistrationCard[];
@@ -454,6 +458,36 @@ export const useStore = create<StoreState>()(
         }));
       },
 
+      // Certificate Branding, E-Signatures & Stamp state
+      certificateSettings: {
+        institutionName: 'LearnHub Institute of Technology',
+        directorName: 'Director',
+        directorTitle: 'LearnHub Certify',
+        directorSignatureUrl: '',
+        instructorSignatureUrl: '',
+        stampUrl: '',
+      },
+
+      updateCertificateSettings: async (newSettings) => {
+        const current = get().certificateSettings;
+        const updated = { ...current, ...newSettings };
+        set({ certificateSettings: updated });
+
+        try {
+          await fetch('/api/instructor/certificate-settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...updated,
+              userId: get().currentUser?.id,
+            }),
+          });
+        } catch (e) {
+          console.warn('Could not sync certificate settings to server:', e);
+        }
+        return true;
+      },
+
       // Hydrate all data from Supabase
       hydrateFromSupabase: async () => {
         const [profiles, dbCourses, dbEnrollments, dbAssignments, dbSubmissions, dbCertificates, dbRegistrations] = await Promise.all([
@@ -470,6 +504,24 @@ export const useStore = create<StoreState>()(
         const updatedUser = currentUser
           ? profiles.find((p) => p.id === currentUser.id) || currentUser
           : null;
+
+        // Attempt fetching remote certificate settings
+        try {
+          const res = await fetch('/api/instructor/certificate-settings');
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.settings) {
+              set((state) => ({
+                certificateSettings: {
+                  ...state.certificateSettings,
+                  ...data.settings,
+                },
+              }));
+            }
+          }
+        } catch {
+          // Keep current state
+        }
 
         set({
           allUsers: profiles,
@@ -488,6 +540,7 @@ export const useStore = create<StoreState>()(
       partialize: (state) => ({
         currentUser: state.currentUser,
         notifications: state.notifications,
+        certificateSettings: state.certificateSettings,
       }),
     }
   )

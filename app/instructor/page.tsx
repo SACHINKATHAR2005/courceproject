@@ -8,6 +8,7 @@ import { BulkStudentImport } from '@/components/bulk-student-import';
 import { BulkCertificateIssue } from '@/components/bulk-certificate-issue';
 import { StorageMonitorBar } from '@/components/storage-monitor-bar';
 import { CurriculumUpload } from '@/components/curriculum-upload';
+import { CertificateBrandingSettings } from '@/components/certificate-branding-settings';
 import { Assignment, AssignmentSubmission, Course } from '@/lib/types';
 import {
   LayoutDashboard,
@@ -53,7 +54,7 @@ function InstructorPortalContent() {
   } = useStore();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'submissions' | 'courses' | 'assignments' | 'students' | 'notes'>('submissions');
+  const [activeTab, setActiveTab] = useState<'submissions' | 'courses' | 'assignments' | 'students' | 'notes' | 'branding'>('submissions');
   const [gradingSubmission, setGradingSubmission] = useState<AssignmentSubmission | null>(null);
 
   // New Course Form State
@@ -389,7 +390,7 @@ function InstructorPortalContent() {
 
             {/* Action Tabs */}
           </div>
-          <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-white p-3 sm:grid-cols-5 md:min-w-140 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 border-t border-slate-200 bg-white p-3 sm:grid-cols-3 md:min-w-140 md:grid-cols-6">
             <button
               onClick={() => setActiveTab('submissions')}
               className={`rounded-xl px-3 py-2.5 text-left text-xs font-bold transition-all ${activeTab === 'submissions'
@@ -434,6 +435,15 @@ function InstructorPortalContent() {
                 }`}
             >
               Share Notes
+            </button>
+            <button
+              onClick={() => setActiveTab('branding')}
+              className={`rounded-xl px-3 py-2.5 text-left text-xs font-bold transition-all ${activeTab === 'branding'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
+                }`}
+            >
+              Signatures & Stamp
             </button>
           </div>
         </div>
@@ -1153,6 +1163,11 @@ function InstructorPortalContent() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* CERTIFICATE BRANDING / SIGNATURES & STAMP TAB */}
+        {activeTab === 'branding' && (
+          <CertificateBrandingSettings />
         )}
 
         {toast && (

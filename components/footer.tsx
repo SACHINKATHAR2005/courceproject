@@ -44,7 +44,7 @@ export const Footer: React.FC = () => {
             <div className="space-y-2">
               <span className="block font-semibold uppercase tracking-wider text-[11px] text-slate-400">Legal</span>
               <ul className="space-y-1.5">
-                <li><span className="text-slate-500">Privacy Policy</span></li>
+                <li><Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
                 <li><span className="text-slate-500">Terms of Service</span></li>
               </ul>
             </div>

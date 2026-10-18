@@ -4,8 +4,9 @@ import React, { useRef, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { Certificate } from '@/lib/types';
 import { CertificateQRCode } from './qr-code';
-import { Award, Printer, ShieldCheck, Share2, ExternalLink, CheckCircle, Download } from 'lucide-react';
+import { Award, Printer, ShieldCheck, Share2, ExternalLink, CheckCircle, Download, FileImage } from 'lucide-react';
 import Link from 'next/link';
+import { useStore } from '@/lib/store/useStore';
 
 interface CertificateCardProps {
   certificate: Certificate;
@@ -16,12 +17,22 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
   certificate,
   triggerConfettiOnLoad = true,
 }) => {
+  const { certificateSettings } = useStore();
   const certRef = useRef<HTMLDivElement>(null);
+  const [downloadingPng, setDownloadingPng] = React.useState(false);
+  const [downloadingPdf, setDownloadingPdf] = React.useState(false);
   const [copied, setCopied] = React.useState(false);
 
-  const verificationUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/verify/${certificate.outwardNo}`
-    : `https://learnhub.cert/verify/${certificate.outwardNo}`;
+  // Exact sanitized certificate outward identifier
+  const cleanOutwardNo = certificate.outwardNo.trim();
+
+  // Dynamic live verification link holding strictly: domainname/verify/<outwardNo>
+  const siteUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    (typeof window !== 'undefined' ? window.location.origin : 'https://courceproject.vercel.app');
+  const baseDomain = siteUrl.replace(/\/+$/, '');
+  const verificationUrl = `${baseDomain}/verify/${cleanOutwardNo}`;
 
   useEffect(() => {
     if (triggerConfettiOnLoad) {
@@ -35,90 +46,96 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
 
   const handlePrint = () => window.print();
 
-  const handleDownloadHtml = () => {
-    if (!certRef.current) return;
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>${certificate.outwardNo}</title><style>
-      @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700;900&family=Inter:wght@400;500;600;700&display=swap');
-      *{box-sizing:border-box;margin:0;padding:0}
-      body{background:#f0f4f8;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:32px;font-family:'Inter',sans-serif}
-      .certificate{width:1122px;min-height:793px;background:#fffef7;position:relative;border:6px solid #B08D57;padding:0;overflow:hidden;box-shadow:0 25px 60px rgba(0,0,0,0.25)}
-      .inner-border{position:absolute;inset:10px;border:1.5px solid #1E3A5F;pointer-events:none;z-index:1}
-      .watermark{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-30deg);font-size:120px;font-weight:900;color:rgba(176,141,87,0.07);white-space:nowrap;pointer-events:none;z-index:0;font-family:'Playfair Display',serif}
-      .corner{position:absolute;width:80px;height:80px;z-index:2}
-      .tl{top:14px;left:14px;border-top:3px solid #B08D57;border-left:3px solid #B08D57}
-      .tr{top:14px;right:14px;border-top:3px solid #B08D57;border-right:3px solid #B08D57}
-      .bl{bottom:14px;left:14px;border-bottom:3px solid #B08D57;border-left:3px solid #B08D57}
-      .br{bottom:14px;right:14px;border-bottom:3px solid #B08D57;border-right:3px solid #B08D57}
-      .header{background:#1E3A5F;padding:18px 40px;display:flex;align-items:center;justify-content:space-between;position:relative;z-index:3}
-      .header-left{display:flex;align-items:center;gap:14px}
-      .seal-mini{width:44px;height:44px;border-radius:50%;border:2px solid #B08D57;background:rgba(176,141,87,0.15);display:flex;align-items:center;justify-content:center;color:#B08D57;font-size:20px}
-      .institution{color:#fff;font-size:20px;font-weight:700;font-family:'Playfair Display',serif;letter-spacing:0.5px}
-      .institution-sub{color:rgba(255,255,255,0.6);font-size:10px;text-transform:uppercase;letter-spacing:2px;margin-top:2px}
-      .cert-id{color:#B08D57;font-family:'Courier New',monospace;font-size:13px;font-weight:700;letter-spacing:1px}
-      .body{padding:28px 56px 28px;position:relative;z-index:3}
-      .divider{display:flex;align-items:center;justify-content:center;gap:12px;margin:0 auto 20px;width:fit-content}
-      .divider-line{width:60px;height:1px;background:linear-gradient(to right,transparent,#B08D57)}
-      .divider-diamond{width:8px;height:8px;background:#B08D57;transform:rotate(45deg)}
-      .cert-title{text-align:center;font-family:'Playfair Display',serif;font-size:42px;font-weight:700;color:#1E3A5F;margin-bottom:8px;letter-spacing:0.5px}
-      .certify-text{text-align:center;font-size:13px;color:#64748B;font-style:italic;margin-bottom:14px}
-      .student-name{text-align:center;font-family:'Playfair Display',serif;font-size:38px;font-weight:900;color:#0F172A;margin-bottom:0}
-      .name-underline{width:480px;height:2px;background:linear-gradient(to right,transparent,#B08D57 20%,#B08D57 80%,transparent);margin:8px auto 16px}
-      .completed-text{text-align:center;font-size:13px;color:#64748B;margin-bottom:12px}
-      .course-box{border:1.5px solid #1E3A5F;background:linear-gradient(135deg,rgba(30,58,95,0.04),rgba(176,141,87,0.06));border-radius:8px;padding:14px 32px;margin:0 auto 12px;max-width:680px;text-align:center}
-      .course-name{font-size:18px;font-weight:700;color:#1E3A5F;font-family:'Playfair Display',serif}
-      .duration-pill{display:inline-block;border:1px solid #E2E8F0;background:#F8FAFC;border-radius:20px;padding:4px 16px;font-size:11px;color:#475569;font-weight:600}
-      .footer-grid{display:grid;grid-template-columns:1fr auto 1fr;gap:24px;align-items:end;padding-top:20px;border-top:1px solid #E2E8F0;margin-top:16px}
-      .footer-left{text-align:left}
-      .footer-center{display:flex;flex-direction:column;align-items:center;gap:6px}
-      .footer-right{text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px}
-      .label{font-size:9px;text-transform:uppercase;letter-spacing:1.5px;color:#64748B;font-weight:700;margin-bottom:3px}
-      .value{font-size:13px;font-weight:700;color:#0F172A}
-      .verified{display:flex;align-items:center;gap:5px;color:#15803D;font-size:11px;font-weight:600;margin-top:4px}
-      .big-seal{width:80px;height:80px;border-radius:50%;border:3px solid #B08D57;background:linear-gradient(135deg,#fffef7,#fef9ec);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px rgba(176,141,87,0.3),inset 0 0 0 2px rgba(176,141,87,0.15)}
-      .seal-label{font-size:8px;text-transform:uppercase;letter-spacing:2px;color:#64748B;font-weight:700}
-      .sig-block{margin-top:20px;padding-top:16px;border-top:1px solid #E2E8F0;display:flex;justify-content:space-between;align-items:flex-end}
-      .sig{text-align:center}
-      .sig-line{width:200px;height:1px;background:#94A3B8;margin-bottom:6px}
-      .sig-name{font-size:12px;font-weight:700;color:#0F172A}
-      .sig-role{font-size:10px;color:#64748B}
-      @media print{body{padding:0;background:white}.certificate{box-shadow:none}}
-    </style></head><body><div class="certificate">
-      <div class="inner-border"></div>
-      <div class="watermark">CERTIFIED</div>
-      <div class="corner tl"></div><div class="corner tr"></div><div class="corner bl"></div><div class="corner br"></div>
-      <div class="header">
-        <div class="header-left">
-          <div class="seal-mini">🏆</div>
-          <div><div class="institution">${certificate.institution || 'LearnHub Institute of Technology'}</div><div class="institution-sub">Verified Digital Credential</div></div>
-        </div>
-        <div class="cert-id">${certificate.outwardNo}</div>
-      </div>
-      <div class="body">
-        <div class="divider"><div class="divider-line"></div><div class="divider-diamond"></div><div class="divider-line" style="background:linear-gradient(to left,transparent,#B08D57)"></div></div>
-        <div class="cert-title">Certificate of Completion</div>
-        <div class="certify-text">This is to certify that</div>
-        <div class="student-name">${certificate.studentName}</div>
-        <div class="name-underline"></div>
-        <div class="completed-text">has successfully fulfilled all academic requirements and completed the course</div>
-        <div class="course-box"><div class="course-name">${certificate.courseName}</div></div>
-        ${certificate.duration ? `<div style="text-align:center;margin-top:8px"><span class="duration-pill">Duration: ${certificate.duration}</span></div>` : ''}
-        <div class="footer-grid">
-          <div class="footer-left"><div class="label">Date of Issue</div><div class="value">${new Date(certificate.issueDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}</div><div class="verified">✅ Verified Authentic</div></div>
-          <div class="footer-center"><div class="big-seal">🏆</div><div class="seal-label">Official Seal</div></div>
-          <div class="footer-right"><div class="label">Scan to Verify</div><div style="font-family:monospace;font-size:10px;color:#64748B">${certificate.outwardNo}</div></div>
-        </div>
-        <div class="sig-block">
-          <div class="sig"><div class="sig-line"></div><div class="sig-name">${certificate.instructorName}</div><div class="sig-role">Course Instructor</div></div>
-          <div class="sig"><div class="sig-line"></div><div class="sig-name">Director</div><div class="sig-role">LearnHub Certify</div></div>
-        </div>
-      </div>
-    </div></body></html>`;
-    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${certificate.outwardNo}.html`;
-    link.click();
-    URL.revokeObjectURL(url);
+  const handleDownloadPdf = async () => {
+    const element = document.getElementById('printable-certificate') || certRef.current;
+    if (!element) return;
+    setDownloadingPdf(true);
+    try {
+      const { toPng } = await import('html-to-image');
+      const { jsPDF } = await import('jspdf');
+
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const pngUrl = await toPng(element, {
+        pixelRatio: 3, // Ultra-crisp 3x resolution
+        backgroundColor: '#fffef7',
+        cacheBust: true,
+      });
+
+      // Load image into HTMLImageElement to read actual natural dimensions
+      const img = new Image();
+      img.src = pngUrl;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+
+      // Create landscape A4 PDF (297mm x 210mm)
+      const pdf = new jsPDF({
+        orientation: 'landscape',
+        unit: 'mm',
+        format: 'a4',
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+
+      // Fit certificate maintaining exact aspect ratio with clean 10mm margins
+      const margin = 10;
+      const targetWidth = pageWidth - margin * 2;
+      const targetHeight = (img.height * targetWidth) / img.width;
+
+      let finalWidth = targetWidth;
+      let finalHeight = targetHeight;
+      let posX = margin;
+      let posY = (pageHeight - targetHeight) / 2;
+
+      if (targetHeight > pageHeight - margin * 2) {
+        finalHeight = pageHeight - margin * 2;
+        finalWidth = (img.width * finalHeight) / img.height;
+        posX = (pageWidth - finalWidth) / 2;
+        posY = margin;
+      }
+
+      pdf.addImage(pngUrl, 'PNG', posX, posY, finalWidth, finalHeight);
+      pdf.save(`${cleanOutwardNo}.pdf`);
+    } catch (err) {
+      console.error('Error generating PDF certificate:', err);
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const handleDownloadPng = async () => {
+    const element = document.getElementById('printable-certificate') || certRef.current;
+    if (!element) return;
+    setDownloadingPng(true);
+    try {
+      const { toPng } = await import('html-to-image');
+      if (document.fonts?.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const pngUrl = await toPng(element, {
+        pixelRatio: 3, // 3x ultra-sharp resolution for crystal clear certificate and 100% scannable QR code
+        backgroundColor: '#fffef7',
+        cacheBust: true,
+      });
+
+      const link = document.createElement('a');
+      link.href = pngUrl;
+      link.download = `${cleanOutwardNo}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Error generating PNG certificate:', err);
+    } finally {
+      setDownloadingPng(false);
+    }
   };
 
   const handleCopyLink = () => {
@@ -190,7 +207,7 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
             </div>
             <div>
               <p className="text-white font-bold text-base leading-tight" style={{ fontFamily: 'Georgia, serif' }}>
-                {certificate.institution || 'LearnHub Institute of Technology'}
+                {certificate.institution || certificateSettings?.institutionName || 'LearnHub Institute of Technology'}
               </p>
               <p className="text-white/50 text-[9px] uppercase tracking-[2px] font-semibold">
                 Verified Digital Credential
@@ -291,20 +308,31 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
               </div>
             </div>
 
-            {/* Center: Embossed Seal */}
+            {/* Center: Stamp / Official Seal */}
             <div className="flex flex-col items-center gap-1.5">
-              <div
-                className="w-[72px] h-[72px] rounded-full flex items-center justify-center"
-                style={{
-                  border: '3px solid #B08D57',
-                  background: 'linear-gradient(135deg, #fffef7, #fef9ec)',
-                  boxShadow: '0 0 0 2px rgba(176,141,87,0.25), inset 0 0 0 2px rgba(176,141,87,0.12)',
-                }}
-              >
-                <div className="w-12 h-12 rounded-full border border-[#B08D57]/40 flex items-center justify-center">
-                  <Award className="w-6 h-6 text-[#B08D57]" />
+              {certificateSettings?.stampUrl ? (
+                <div className="w-[80px] h-[80px] flex items-center justify-center relative">
+                  <img
+                    src={certificateSettings.stampUrl}
+                    alt="Official Institutional Seal"
+                    className="max-w-full max-h-full object-contain filter drop-shadow-sm select-none"
+                    crossOrigin="anonymous"
+                  />
                 </div>
-              </div>
+              ) : (
+                <div
+                  className="w-[72px] h-[72px] rounded-full flex items-center justify-center"
+                  style={{
+                    border: '3px solid #B08D57',
+                    background: 'linear-gradient(135deg, #fffef7, #fef9ec)',
+                    boxShadow: '0 0 0 2px rgba(176,141,87,0.25), inset 0 0 0 2px rgba(176,141,87,0.12)',
+                  }}
+                >
+                  <div className="w-12 h-12 rounded-full border border-[#B08D57]/40 flex items-center justify-center">
+                    <Award className="w-6 h-6 text-[#B08D57]" />
+                  </div>
+                </div>
+              )}
               <p className="text-[8px] font-bold text-[#64748B] uppercase tracking-[2px]">
                 Official Seal
               </p>
@@ -315,27 +343,64 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
               <p className="text-[9px] font-bold text-[#64748B] uppercase tracking-[1.5px]">
                 Scan to Verify
               </p>
-              <CertificateQRCode value={verificationUrl} size={72} />
-              <p className="text-[9px] font-mono text-[#94A3B8]">
-                {certificate.outwardNo}
+              <CertificateQRCode value={verificationUrl} size={96} />
+              <p className="text-[10px] font-mono font-semibold text-[#64748B] tracking-wider">
+                {cleanOutwardNo}
               </p>
             </div>
           </div>
 
           {/* ── Signature Block ── */}
           <div className="mt-5 pt-4 border-t border-[#E2E8F0] flex items-end justify-between">
-            <div className="text-center">
-              <div className="w-44 h-px bg-[#94A3B8] mb-1.5" />
+            {/* Instructor Signature */}
+            <div className="text-center min-w-[176px]">
+              <div className="h-12 flex items-end justify-center mb-1">
+                {certificateSettings?.instructorSignatureUrl ? (
+                  <img
+                    src={certificateSettings.instructorSignatureUrl}
+                    alt="Instructor E-Signature"
+                    className="max-h-12 max-w-[160px] object-contain select-none"
+                    crossOrigin="anonymous"
+                  />
+                ) : (
+                  <span className="font-serif italic text-sm text-[#1E3A5F]/70 select-none">
+                    {certificate.instructorName}
+                  </span>
+                )}
+              </div>
+              <div className="w-44 h-px bg-[#94A3B8] mx-auto mb-1.5" />
               <p className="text-xs font-bold text-[#0F172A]">{certificate.instructorName}</p>
               <p className="text-[10px] text-[#64748B]">Course Instructor</p>
             </div>
+
+            {/* Middle Registry Note */}
             <div className="text-center hidden sm:block">
               <p className="text-[9px] text-[#94A3B8] font-mono">LearnHub Certify · Registry System</p>
             </div>
-            <div className="text-center">
-              <div className="w-44 h-px bg-[#94A3B8] mb-1.5" />
-              <p className="text-xs font-bold text-[#0F172A]">Director</p>
-              <p className="text-[10px] text-[#64748B]">LearnHub Certify</p>
+
+            {/* Director Signature */}
+            <div className="text-center min-w-[176px]">
+              <div className="h-12 flex items-end justify-center mb-1">
+                {certificateSettings?.directorSignatureUrl ? (
+                  <img
+                    src={certificateSettings.directorSignatureUrl}
+                    alt="Director E-Signature"
+                    className="max-h-12 max-w-[160px] object-contain select-none"
+                    crossOrigin="anonymous"
+                  />
+                ) : (
+                  <span className="font-serif italic text-sm text-[#1E3A5F]/70 select-none">
+                    {certificateSettings?.directorName || 'Director'}
+                  </span>
+                )}
+              </div>
+              <div className="w-44 h-px bg-[#94A3B8] mx-auto mb-1.5" />
+              <p className="text-xs font-bold text-[#0F172A]">
+                {certificateSettings?.directorName || 'Director'}
+              </p>
+              <p className="text-[10px] text-[#64748B]">
+                {certificateSettings?.directorTitle || 'LearnHub Certify'}
+              </p>
             </div>
           </div>
         </div>
@@ -344,35 +409,63 @@ export const CertificateCard: React.FC<CertificateCardProps> = ({
       {/* ─── Action Buttons ────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center justify-center gap-3 print:hidden">
         <button
-          onClick={handlePrint}
-          className="px-5 py-2.5 rounded-lg bg-[#1E3A5F] hover:bg-[#162F4D] text-white font-semibold text-xs shadow-sm transition-colors flex items-center space-x-2 cursor-pointer"
+          onClick={handleDownloadPng}
+          disabled={downloadingPng || downloadingPdf}
+          className="px-6 py-2.5 rounded-lg bg-[#B08D57] hover:bg-[#967442] text-white font-semibold text-xs shadow-md transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-60"
         >
-          <Printer className="w-4 h-4" />
-          <span>Print / Save PDF</span>
+          {downloadingPng ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Generating PNG...</span>
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" />
+              <span>Download PNG Certificate</span>
+            </>
+          )}
         </button>
 
         <button
-          onClick={handleDownloadHtml}
-          className="px-5 py-2.5 rounded-lg bg-[#B08D57] hover:bg-[#967442] text-white font-semibold text-xs shadow-sm transition-colors flex items-center space-x-2 cursor-pointer"
+          onClick={handleDownloadPdf}
+          disabled={downloadingPng || downloadingPdf}
+          className="px-5 py-2.5 rounded-lg bg-[#1E3A5F] hover:bg-[#162F4D] text-white font-semibold text-xs shadow-sm transition-all flex items-center space-x-2 cursor-pointer disabled:opacity-60"
         >
-          <Download className="w-4 h-4" />
-          <span>Download Certificate</span>
+          {downloadingPdf ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>Generating PDF...</span>
+            </>
+          ) : (
+            <>
+              <Download className="w-4 h-4" />
+              <span>Download PDF</span>
+            </>
+          )}
+        </button>
+
+        <button
+          onClick={handlePrint}
+          className="px-4 py-2.5 rounded-lg bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs border border-[#E2E8F0] shadow-sm transition-colors flex items-center space-x-2 cursor-pointer"
+        >
+          <Printer className="w-4 h-4 text-[#1E3A5F]" />
+          <span>Print</span>
         </button>
 
         <button
           onClick={handleCopyLink}
-          className="px-5 py-2.5 rounded-lg bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs border border-[#E2E8F0] transition-colors flex items-center space-x-2 cursor-pointer"
+          className="px-4 py-2.5 rounded-lg bg-white hover:bg-[#F8FAFC] text-[#0F172A] font-semibold text-xs border border-[#E2E8F0] transition-colors flex items-center space-x-2 cursor-pointer"
         >
           {copied ? <CheckCircle className="w-4 h-4 text-[#15803D]" /> : <Share2 className="w-4 h-4 text-[#475569]" />}
           <span>{copied ? 'Link Copied!' : 'Share Verify Link'}</span>
         </button>
 
         <Link
-          href={`/verify/${certificate.outwardNo}`}
-          className="px-5 py-2.5 rounded-lg bg-white hover:bg-[#F8FAFC] text-[#1E3A5F] font-semibold text-xs border border-[#E2E8F0] transition-colors flex items-center space-x-2"
+          href={`/verify/${cleanOutwardNo}`}
+          className="px-4 py-2.5 rounded-lg bg-white hover:bg-[#F8FAFC] text-[#1E3A5F] font-semibold text-xs border border-[#E2E8F0] transition-colors flex items-center space-x-2"
         >
           <ExternalLink className="w-4 h-4 text-[#1E3A5F]" />
-          <span>Verification Page</span>
+          <span>Verify Page</span>
         </Link>
       </div>
     </div>

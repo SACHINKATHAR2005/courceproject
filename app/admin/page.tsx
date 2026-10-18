@@ -23,7 +23,8 @@ import {
   ArrowUpRight,
   ChevronRight,
   X,
-  Plus
+  Plus,
+  Cookie
 } from 'lucide-react';
 
 import { AuthAccessGate } from '../../components/auth-access-gate';
@@ -51,16 +52,26 @@ function AdminDashboardContent() {
   } = useStore();
 
   const [mounted, setMounted] = useState(false);
-  const [activeTab, setActiveTab] = useState<'instructors' | 'courses' | 'students' | 'certificates' | 'payments'>('instructors');
+  const [activeTab, setActiveTab] = useState<'instructors' | 'courses' | 'students' | 'certificates' | 'payments' | 'consent'>('instructors');
   const [payments, setPayments] = useState<Payment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCertForModal, setSelectedCertForModal] = useState<Certificate | null>(null);
+  const [consentStats, setConsentStats] = useState<{
+    total: number;
+    accepted: number;
+    declined: number;
+    acceptanceRate: number;
+  } | null>(null);
 
   useEffect(() => {
     setMounted(true);
     // Hydrate store from Supabase (store starts empty — no mock data)
     useStore.getState().hydrateFromSupabase();
     supabaseService.fetchPayments().then(setPayments);
+    fetch('/api/consent')
+      .then((res) => res.json())
+      .then((data) => setConsentStats(data))
+      .catch((err) => console.error('Failed to fetch consent stats:', err));
   }, []);
 
   if (!mounted) return null;
@@ -133,6 +144,17 @@ function AdminDashboardContent() {
           </button>
           <button type="button" onClick={() => setActiveTab('payments')} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${activeTab === 'payments' ? 'bg-amber-500 text-slate-950 shadow-md' : 'text-slate-400 hover:text-white'}`}>
             Payments ({payments.filter((payment) => payment.status === 'paid').length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('consent')}
+            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'consent'
+                ? 'bg-amber-500 text-slate-950 shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Consent Stats
           </button>
         </div>
       </div>
@@ -452,6 +474,92 @@ function AdminDashboardContent() {
                 })}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB: COOKIE CONSENT STATS */}
+      {activeTab === 'consent' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-extrabold text-white flex items-center space-x-2">
+                <Cookie className="w-5 h-5 text-amber-400" />
+                <span>Cookie Consent Analytics</span>
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">Based on cookie consent banner responses from visitors</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                fetch('/api/consent')
+                  .then((res) => res.json())
+                  .then((data) => setConsentStats(data))
+                  .catch((err) => console.error('Failed to refresh consent stats:', err));
+              }}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs font-bold transition-all self-start sm:self-auto cursor-pointer"
+            >
+              Refresh Stats
+            </button>
+          </div>
+
+          {/* 3 Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-2 shadow-lg">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Total Responses</span>
+                <Cookie className="w-4 h-4 text-amber-400" />
+              </div>
+              <p className="text-3xl font-extrabold text-white">{consentStats?.total ?? 0}</p>
+              <p className="text-[11px] text-slate-400">Total visitors recorded</p>
+            </div>
+
+            <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-5 space-y-2 shadow-lg">
+              <div className="flex items-center justify-between text-emerald-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Accepted</span>
+                <CheckCircle2 className="w-4 h-4" />
+              </div>
+              <p className="text-3xl font-extrabold text-emerald-400">{consentStats?.accepted ?? 0}</p>
+              <p className="text-[11px] text-emerald-400/80">Consent granted</p>
+            </div>
+
+            <div className="bg-slate-900 border border-red-500/30 rounded-2xl p-5 space-y-2 shadow-lg">
+              <div className="flex items-center justify-between text-red-400">
+                <span className="text-[10px] font-bold uppercase tracking-wider">Declined</span>
+                <X className="w-4 h-4" />
+              </div>
+              <p className="text-3xl font-extrabold text-red-400">{consentStats?.declined ?? 0}</p>
+              <p className="text-[11px] text-red-400/80">Consent declined</p>
+            </div>
+          </div>
+
+          {/* Acceptance Rate Progress Bar */}
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-4 shadow-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block"></span>
+                  <span>Acceptance Rate</span>
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">Ratio of accepted consents vs total responses</p>
+              </div>
+              <span className="text-2xl font-extrabold text-amber-400">
+                {consentStats?.acceptanceRate ?? 0}%
+              </span>
+            </div>
+
+            <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
+              <div
+                className="bg-gradient-to-r from-amber-500 to-emerald-400 h-full rounded-full transition-all duration-500 ease-out"
+                style={{ width: `${Math.min(100, Math.max(0, consentStats?.acceptanceRate ?? 0))}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1">
+              <span>0% (All Declined)</span>
+              <span>Based on cookie consent banner responses from visitors</span>
+              <span>100% (All Accepted)</span>
+            </div>
           </div>
         </div>
       )}
